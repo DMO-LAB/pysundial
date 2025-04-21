@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# CMake files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.bak
+
+# IDEs
+.vscode/
+.idea/
+
+# Python virtual environments
+.env
+.venv
+env/
+venv/
+*.env
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Core dumps
+core

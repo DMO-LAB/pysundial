@@ -22,8 +22,38 @@ message(STATUS "SUNDIALS LIBRARY DIR: ${SUNDIALS_LIBRARY_DIR}")
 # Find Python
 find_package(Python COMPONENTS Interpreter Development REQUIRED)
 
-# Find pybind11
+# Find pybind11 - try multiple methods
 find_package(pybind11 REQUIRED)
+if(NOT pybind11_FOUND)
+    # Try to find pybind11 via Python
+    execute_process(
+        COMMAND ${Python_EXECUTABLE} -c "import pybind11; print(pybind11.get_cmake_dir())"
+        OUTPUT_VARIABLE PYBIND11_CMAKE_DIR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    
+    if(PYBIND11_CMAKE_DIR)
+        list(APPEND CMAKE_PREFIX_PATH ${PYBIND11_CMAKE_DIR})
+        find_package(pybind11 REQUIRED)
+    else()
+        # Try common installation paths
+        find_path(PYBIND11_INCLUDE_DIR pybind11/pybind11.h
+            PATHS
+            /usr/local/include
+            /opt/homebrew/include
+            /usr/include
+            ${Python_INCLUDE_DIRS}
+        )
+        
+        if(PYBIND11_INCLUDE_DIR)
+            set(pybind11_INCLUDE_DIRS ${PYBIND11_INCLUDE_DIR})
+            set(pybind11_FOUND TRUE)
+        else()
+            message(FATAL_ERROR "pybind11 not found. Please install it with: pip install pybind11")
+        endif()
+    endif()
+endif()
 
 # Try to find SUNDIALS libraries with common naming patterns
 find_library(SUNDIALS_CVODE_LIB 

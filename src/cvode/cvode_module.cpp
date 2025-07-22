@@ -12,9 +12,11 @@
 #include <sunlinsol/sunlinsol_dense.h>
 #include <sundials/sundials_types.h>
 #include <nvector/nvector_serial.h>
+#include <sunnonlinsol/sunnonlinsol_fixedpoint.h>
 
 #include "../common/common.hpp"
 #include "../utils/callback_wrappers.hpp"
+#include <iostream>
 
 namespace py = pybind11;
 using namespace sundials_py;
@@ -45,85 +47,110 @@ private:
     N_Vector y_;
     bool y_owner_;
 
+    SUNNonlinearSolver NLS_;
+
 public:
     // Constructor
-    // Constructor
 CVodeSolver(int system_size, 
-            PyRhsFn rhs_fn,
-            IterationType iter_type = IterationType::NEWTON,
-            LinearSolverType linsol_type = LinearSolverType::DENSE) 
+        PyRhsFn rhs_fn,
+        IterationType iter_type = IterationType::NEWTON,
+        LinearSolverType linsol_type = LinearSolverType::DENSE,
+        bool use_bdf = true)  // Add parameter to choose BDF vs Adams
     : N_(system_size), 
-      t0_(0.0), 
-      using_newton_iteration_(iter_type == IterationType::NEWTON),
-      rhs_data_(new PyRhsFnData{rhs_fn}),
-      jac_data_(nullptr),
-      root_data_(nullptr),
-      A_(nullptr),
-      LS_(nullptr),
-      y_(nullptr),
-      y_owner_(false) {
+    t0_(0.0), 
+    using_newton_iteration_(iter_type == IterationType::NEWTON),
+    rhs_data_(new PyRhsFnData{rhs_fn}),
+    jac_data_(nullptr),
+    root_data_(nullptr),
+    A_(nullptr),
+    LS_(nullptr),
+    y_(nullptr),
+    y_owner_(false),
+    NLS_(nullptr) {
+    std::cout << "[DEBUG] CVodeSolver constructor start. system_size=" << system_size << ", iter_type=" << (using_newton_iteration_ ? "NEWTON" : "FUNCTIONAL") << ", use_bdf=" << use_bdf << std::endl;
 
     // Ensure context is initialized
     if (sunctx == nullptr) {
-        initialize_sundials_context();
+    initialize_sundials_context();
     }
 
     // Create dummy initial vector
     N_Vector y0_dummy = N_VNew_Serial(N_, sunctx);
     if (!y0_dummy) {
-        throw std::runtime_error("Failed to allocate dummy y0 vector");
+    throw std::runtime_error("Failed to allocate dummy y0 vector");
     }
 
-    // Initialize CVODE memory with correct method
-    cvode_mem_ = CVodeCreate(using_newton_iteration_ ? CV_BDF : CV_ADAMS, sunctx);
+    // Initialize CVODE memory with LINEAR MULTISTEP METHOD (not iteration type)
+    // BDF is typically used with Newton iteration
+    // Adams is typically used with functional iteration, but can use Newton too
+    int lmm = use_bdf ? CV_BDF : CV_ADAMS;
+    cvode_mem_ = CVodeCreate(lmm, sunctx);
+
     if (!cvode_mem_) {
-        N_VDestroy_Serial(y0_dummy);
-        throw std::runtime_error("Failed to create CVODE memory");
+    N_VDestroy_Serial(y0_dummy);
+    throw std::runtime_error("Failed to create CVODE memory");
     }
 
     // Initialize CVODE with dummy vector
     int flag = CVodeInit(cvode_mem_, rhs_wrapper, 0.0, y0_dummy);
     if (flag != CV_SUCCESS) {
-        N_VDestroy_Serial(y0_dummy);
-        CVodeFree(&cvode_mem_);
-        throw std::runtime_error("Failed to initialize CVODE");
+    N_VDestroy_Serial(y0_dummy);
+    CVodeFree(&cvode_mem_);
+    throw std::runtime_error("Failed to initialize CVODE");
     }
 
     // Set user data for RHS
     flag = CVodeSetUserData(cvode_mem_, rhs_data_);
     check_flag(&flag, "CVodeSetUserData", 1);
 
+    // Set up linear solver based on iteration type
     if (using_newton_iteration_) {
-        // Only Newton iteration needs a linear solver
-        if (linsol_type == LinearSolverType::DENSE) {
-            A_ = SUNDenseMatrix(N_, N_, sunctx);
-            if (!A_) {
-                throw std::runtime_error("Failed to create dense matrix");
-            }
-
-            LS_ = SUNLinSol_Dense(y0_dummy, A_, sunctx);
-            if (!LS_) {
-                SUNMatDestroy(A_);
-                throw std::runtime_error("Failed to create dense linear solver");
-            }
-
-            flag = CVodeSetLinearSolver(cvode_mem_, LS_, A_);
-            check_flag(&flag, "CVodeSetLinearSolver", 1);
+    // Newton iteration requires a linear solver
+    if (linsol_type == LinearSolverType::DENSE) {
+        A_ = SUNDenseMatrix(N_, N_, sunctx);
+        if (!A_) {
+            throw std::runtime_error("Failed to create dense matrix");
         }
 
-        // You can add more solver types here in the future
+        LS_ = SUNLinSol_Dense(y0_dummy, A_, sunctx);
+        if (!LS_) {
+            SUNMatDestroy(A_);
+            throw std::runtime_error("Failed to create dense linear solver");
+        }
+
+        flag = CVodeSetLinearSolver(cvode_mem_, LS_, A_);
+        check_flag(&flag, "CVodeSetLinearSolver", 1);
+    }
     } else {
-        // Functional iteration: no linear solver, just set max nonlin iters
-        flag = CVodeSetMaxNonlinIters(cvode_mem_, 25);
-        check_flag(&flag, "CVodeSetMaxNonlinIters", 1);
+    // Functional iteration: use fixed-point nonlinear solver
+    NLS_ = SUNNonlinSol_FixedPoint(y0_dummy, 1, sunctx);
+    if (!NLS_) {
+        N_VDestroy_Serial(y0_dummy);
+        throw std::runtime_error("Failed to create fixed-point nonlinear solver");
+    }
+    flag = CVodeSetNonlinearSolver(cvode_mem_, NLS_);
+    check_flag(&flag, "CVodeSetNonlinearSolver", 1);
+
+    // Set maximum number of nonlinear iterations
+    flag = CVodeSetMaxNonlinIters(cvode_mem_, 25);
+    check_flag(&flag, "CVodeSetMaxNonlinIters", 1);
+
+    // For Adams with functional iteration, you might want to adjust other parameters
+    if (!use_bdf) {
+        // Set maximum order for Adams method (default is 12, you might want lower)
+        flag = CVodeSetMaxOrd(cvode_mem_, 5);
+        check_flag(&flag, "CVodeSetMaxOrd", 1);
+    }
     }
 
     N_VDestroy_Serial(y0_dummy);  // cleanup dummy vector
-}
+    std::cout << "[DEBUG] CVodeSolver constructor end." << std::endl;
+    }
 
     
     // Destructor
     ~CVodeSolver() {
+        std::cout << "[DEBUG] CVodeSolver destructor start." << std::endl;
         // Free memory in reverse order of allocation
         if (y_owner_ && y_ != nullptr) {
             N_VDestroy_Serial(y_);
@@ -137,6 +164,10 @@ CVodeSolver(int system_size,
             SUNMatDestroy(A_);
         }
         
+        if (NLS_ != nullptr) {
+            SUNNonlinSolFree(NLS_);
+        }
+
         if (cvode_mem_ != nullptr) {
             CVodeFree(&cvode_mem_);
         }
@@ -144,11 +175,13 @@ CVodeSolver(int system_size,
         delete rhs_data_;
         delete jac_data_;
         delete root_data_;
+        std::cout << "[DEBUG] CVodeSolver destructor end." << std::endl;
     }
     
     // Initialize the solver with initial conditions
     void initialize(py::array_t<realtype> y0, double t0 = 0.0, 
                double rel_tol = 1.0e-6, py::array_t<realtype> abs_tol = py::array_t<realtype>()) {
+        std::cout << "[DEBUG] initialize() start." << std::endl;
         // Set initial time
         t0_ = t0;
         
@@ -210,6 +243,7 @@ CVodeSolver(int system_size,
         } catch (const std::exception& e) {
             throw std::runtime_error(std::string("Error initializing solver: ") + e.what());
         }
+        std::cout << "[DEBUG] initialize() end." << std::endl;
     }
     
     // Set the Jacobian function
@@ -259,6 +293,7 @@ CVodeSolver(int system_size,
     
     // Solve to a specific time point
     py::array_t<realtype> solve_to(double tout) {
+        std::cout << "[DEBUG] solve_to() start. tout=" << tout << std::endl;
         if (y_ == nullptr) {
             throw std::runtime_error("Solver not initialized with initial conditions");
         }
@@ -268,6 +303,7 @@ CVodeSolver(int system_size,
         
         realtype t = t0_;
         int flag = CVode(cvode_mem_, tout, y_, &t, CV_NORMAL);
+        std::cout << "[DEBUG] solve_to() after CVode call. flag=" << flag << std::endl;
         
         if (flag < 0) {
             std::cerr << "CVODE solver error code: " << flag << std::endl;
@@ -277,6 +313,7 @@ CVodeSolver(int system_size,
         // std::cout << "Integration completed successfully to t=" << t << std::endl;
         
         // Convert result to numpy array
+        std::cout << "[DEBUG] solve_to() end." << std::endl;
         return nvector_to_numpy(y_);
     }
     
@@ -389,13 +426,14 @@ void init_cvode_module(py::module_ &m) {
         .value("PCG", LinearSolverType::PCG)
         .export_values();
     
-    // Register CVodeSolver class
+    // Register CVodeSolver class with updated constructor
     py::class_<CVodeSolver>(m, "CVodeSolver")
-        .def(py::init<int, PyRhsFn, IterationType, LinearSolverType>(),
+        .def(py::init<int, PyRhsFn, IterationType, LinearSolverType, bool>(),
              py::arg("system_size"),
              py::arg("rhs_fn"),
              py::arg("iter_type") = IterationType::NEWTON,
              py::arg("linsol_type") = LinearSolverType::DENSE,
+             py::arg("use_bdf") = true,  // Add this parameter
              "Create a CVODE solver for an ODE system")
         .def("initialize", &CVodeSolver::initialize,
              py::arg("y0"),
@@ -428,8 +466,5 @@ void init_cvode_module(py::module_ &m) {
                  return "<CVodeSolver>";
              });
     
-    // Add module information about the API version
     m.attr("__api_version__") = "CVODE API (SUNDIALS 7.3.0+)";
-        // For backward compatibility, keep original function names but map to new ones
-        
 }

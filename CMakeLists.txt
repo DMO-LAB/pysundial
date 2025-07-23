@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(sundials_py)
+project(SundialsPy)
 
 # Set C++17 as required standard (upgrade from C++11)
 set(CMAKE_CXX_STANDARD 17)
@@ -135,10 +135,10 @@ file(GLOB_RECURSE SOURCES
 message(STATUS "Final sources for Python module: ${SOURCES}")
 
 # Create the Python extension module
-pybind11_add_module(_sundials_py ${SOURCES})
+pybind11_add_module(SundialsPy ${SOURCES})
 
 # Link against SUNDIALS libraries
-target_link_libraries(_sundials_py PRIVATE ${SUNDIALS_LIBRARIES})
+target_link_libraries(SundialsPy PRIVATE ${SUNDIALS_LIBRARIES})
 
 # Install the module
-install(TARGETS _sundials_py DESTINATION sundials_py)
+install(TARGETS SundialsPy DESTINATION SundialsPy)

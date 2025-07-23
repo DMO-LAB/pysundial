@@ -4,7 +4,7 @@ import cantera as ct
 import time
 from enum import Enum
 from typing import Dict, Any, List, Optional, Tuple
-import sundials_py  # Your SUNDIALS wrapper
+import SundialsPy  # Your SUNDIALS wrapper
 
 class CombustionStage(Enum):
     """Different stages of combustion process."""
@@ -197,23 +197,23 @@ class SundialsChemicalIntegrator:
         
         # Create the appropriate solver
         if method == 'cvode_bdf':
-            solver = sundials_py.cvode.CVodeSolver(
+            solver = SundialsPy.cvode.CVodeSolver(
                 system_size=system_size,
                 rhs_fn=self.dydt,
-                iter_type=sundials_py.cvode.IterationType.NEWTON
+                iter_type=SundialsPy.cvode.IterationType.NEWTON
             )
         elif method == 'cvode_adams':
-            solver = sundials_py.cvode.CVodeSolver(
+            solver = SundialsPy.cvode.CVodeSolver(
                 system_size=system_size,
                 rhs_fn=self.dydt,
-                iter_type=sundials_py.cvode.IterationType.FUNCTIONAL
+                iter_type=SundialsPy.cvode.IterationType.FUNCTIONAL
             )
         elif method == 'arkode_erk':
-            solver = sundials_py.arkode.ARKodeSolver(
+            solver = SundialsPy.arkode.ARKodeSolver(
                 system_size=system_size,
                 explicit_fn=self.dydt,
                 implicit_fn=None,
-                butcher_table=sundials_py.arkode.ButcherTable.ARK548L2SA_ERK_8_4_5
+                butcher_table=SundialsPy.arkode.ButcherTable.ARK548L2SA_ERK_8_4_5
             )
         else:
             raise ValueError(f"Unknown solver method: {method}")

@@ -9,7 +9,7 @@ on a stiff ODE problem. It also explores what happens when a Jacobian is not pro
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-import sundials_py
+import SundialsPy
 from enum import Enum
 
 class TestCase(Enum):
@@ -56,18 +56,18 @@ def run_test():
     # Define DIRK methods to test
     dirk_methods = [
         # Method name, Butcher table enum
-        ("SDIRK_2_1_2", sundials_py.arkode.ButcherTable.SDIRK_2_1_2),
-        ("BILLINGTON_3_3_2", sundials_py.arkode.ButcherTable.BILLINGTON_3_3_2),
-        ("TRBDF2_3_3_2", sundials_py.arkode.ButcherTable.TRBDF2_3_3_2),
-        ("KVAERNO_4_2_3", sundials_py.arkode.ButcherTable.KVAERNO_4_2_3),
-        ("ARK324L2SA_DIRK_4_2_3", sundials_py.arkode.ButcherTable.ARK324L2SA_DIRK_4_2_3),
-        ("CASH_5_2_4", sundials_py.arkode.ButcherTable.CASH_5_2_4),
-        ("CASH_5_3_4", sundials_py.arkode.ButcherTable.CASH_5_3_4),
-        ("SDIRK_5_3_4", sundials_py.arkode.ButcherTable.SDIRK_5_3_4),
-        ("ARK436L2SA_DIRK_6_3_4", sundials_py.arkode.ButcherTable.ARK436L2SA_DIRK_6_3_4),
-        ("ARK437L2SA_DIRK_7_3_4", sundials_py.arkode.ButcherTable.ARK437L2SA_DIRK_7_3_4),
-        ("KVAERNO_7_4_5", sundials_py.arkode.ButcherTable.KVAERNO_7_4_5),
-        ("ARK548L2SA_DIRK_8_4_5", sundials_py.arkode.ButcherTable.ARK548L2SA_DIRK_8_4_5)
+        ("SDIRK_2_1_2", SundialsPy.arkode.ButcherTable.SDIRK_2_1_2),
+        ("BILLINGTON_3_3_2", SundialsPy.arkode.ButcherTable.BILLINGTON_3_3_2),
+        ("TRBDF2_3_3_2", SundialsPy.arkode.ButcherTable.TRBDF2_3_3_2),
+        ("KVAERNO_4_2_3", SundialsPy.arkode.ButcherTable.KVAERNO_4_2_3),
+        ("ARK324L2SA_DIRK_4_2_3", SundialsPy.arkode.ButcherTable.ARK324L2SA_DIRK_4_2_3),
+        ("CASH_5_2_4", SundialsPy.arkode.ButcherTable.CASH_5_2_4),
+        ("CASH_5_3_4", SundialsPy.arkode.ButcherTable.CASH_5_3_4),
+        ("SDIRK_5_3_4", SundialsPy.arkode.ButcherTable.SDIRK_5_3_4),
+        ("ARK436L2SA_DIRK_6_3_4", SundialsPy.arkode.ButcherTable.ARK436L2SA_DIRK_6_3_4),
+        ("ARK437L2SA_DIRK_7_3_4", SundialsPy.arkode.ButcherTable.ARK437L2SA_DIRK_7_3_4),
+        ("KVAERNO_7_4_5", SundialsPy.arkode.ButcherTable.KVAERNO_7_4_5),
+        ("ARK548L2SA_DIRK_8_4_5", SundialsPy.arkode.ButcherTable.ARK548L2SA_DIRK_8_4_5)
     ]
     
     # Test cases to run
@@ -96,12 +96,12 @@ def run_test():
             
             try:
                 # Create ARKode solver with implicit function
-                solver = sundials_py.arkode.ARKodeSolver(
+                solver = SundialsPy.arkode.ARKodeSolver(
                     system_size=system_size,  # Explicitly provide system size
                     explicit_fn=rhs_explicit,
                     implicit_fn=rhs_implicit,  # This is where we provide the implicit part
                     butcher_table=butcher_table,
-                    linsol_type=sundials_py.cvode.LinearSolverType.DENSE
+                    linsol_type=SundialsPy.cvode.LinearSolverType.DENSE
                 )
                 
                 # Initialize solver

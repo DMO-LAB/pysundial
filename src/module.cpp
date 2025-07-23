@@ -12,7 +12,7 @@
 namespace py = pybind11;
 using namespace sundials_py;
 
-PYBIND11_MODULE(_sundials_py, m) {  // << Corrected here
+PYBIND11_MODULE(_SundialsPy, m) {
     m.doc() = "Python bindings for SUNDIALS solvers";
     
     // Initialize SUNDIALS context

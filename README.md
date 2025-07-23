@@ -1,80 +1,96 @@
-# sundials_py
+# SundialsPy
 
-Python bindings for SUNDIALS solvers using `pybind11` and `CMake`.
+SundialsPy is a Python interface to the SUNDIALS suite of ODE and DAE solvers, providing high-performance, flexible, and user-friendly access to advanced time integration algorithms for scientific computing and engineering applications.
 
-This project provides an interface to use ARKODE and CVODE (from the SUNDIALS suite) directly in Python, enabling integration of ODE systems with explicit and implicit solvers using familiar NumPy arrays.
+## Features
+- Pythonic interface to SUNDIALS core solvers
+- Support for both stiff and non-stiff ODEs
+- Access to CVODE and ARKODE integrators
+- Flexible right-hand side (RHS) and Jacobian callback support
+- Vector and array tolerances
+- Easy installation and usage
 
-## 📦 Features
+## Installation
 
-- ARKODE and CVODE solvers via `pybind11`
-- Support for explicit, implicit, and IMEX Butcher tables
-- Integration with NumPy arrays for initial conditions and results
-- Step-by-step integration and detailed solver statistics
-- Easily extensible C++/Python interface
+### Prerequisites
+- Python 3.8+
+- [SUNDIALS library](https://computing.llnl.gov/projects/sundials/sundials-software) (should be installed and available on your system)
+- C++ compiler (for building the extension)
+- [pybind11](https://github.com/pybind/pybind11) (usually installed automatically)
+- numpy
 
-## 🛠 Installation
-
-### 1. Clone the repo
-
+### Install via pip (editable/development mode)
 ```bash
-git clone https://github.com/DMO-LAB/pysundial.git
-cd sundials_py
+pip install -e .
 ```
 
-### 2. Set up environment
-
+Or, for a standard install:
 ```bash
-conda create -n sundialEnv python=3.11
-conda activate sundialEnv
-pip install -e . --no-cache-dir
+pip install .
 ```
 
-Ensure that SUNDIALS and its headers are available to CMake in your environment.
-
-### 3. Build the bindings (automatically handled by pip install)
-
-If needed manually:
+If you need to specify SUNDIALS include/library paths, set the following environment variables before installing:
 ```bash
-mkdir -p build && cd build
-cmake ..
-make
+export SUNDIALS_ROOT=/path/to/sundials
+export SUNDIALS_INCLUDE_DIR=$SUNDIALS_ROOT/include
+export SUNDIALS_LIBRARY_DIR=$SUNDIALS_ROOT/lib
 ```
 
-## 🚀 Usage
-
-Example:
+## Usage Example
 
 ```python
-from sundials_py import ARKodeSolver, ButcherTable
+import numpy as np
+import SundialsPy
 
-# Define your right-hand side functions here
-# Then:
-solver = ARKodeSolver(system_size=3, explicit_fn=your_exp_fn, butcher_table=ButcherTable.ARK436L2SA_ERK_6_3_4)
-solver.initialize(y0=numpy_array)
-result = solver.solve_to(10.0)
+# Define a simple ODE: dy/dt = -0.5*y
+
+def rhs(t, y):
+    return np.array([-0.5 * y[0]])
+
+# Initial condition
+y0 = np.array([1.0])
+t0 = 0.0
+t_end = 2.0
+
+# Create a CVODE solver (BDF + Newton)
+solver = SundialsPy.cvode.CVodeSolver(
+    system_size=1,
+    rhs_fn=rhs,
+    iter_type=SundialsPy.cvode.IterationType.NEWTON,
+    linsol_type=SundialsPy.cvode.LinearSolverType.DENSE,
+    use_bdf=True
+)
+
+solver.initialize(y0, t0, 1e-6, np.array([1e-8]))
+result = solver.solve_to(0.1)
+print("Solution at t=0.1:", result)
 ```
 
-See `test_implicit.py` and `test_arkode.py` for more usage examples.
+## Available Integrators
 
-## 📁 Structure
+### CVODE
+- **BDF (Backward Differentiation Formula):** For stiff ODEs
+- **Adams:** For non-stiff ODEs
+- **Iteration Types:** Newton, Functional
+- **Linear Solvers:** Dense, Band, Sparse, Iterative (SPGMR, SPBCG, SPTFQMR, PCG)
 
-```
-src/
-  arkode/       # ARKODE bindings + Butcher tables
-  cvode/        # CVODE bindings
-  common/       # Shared utilities
-  utils/        # Callback and vector wrappers
-sundials_py/    # Python package entry point
-tests/          # Python tests
-```
+### ARKODE
+- **Explicit, Implicit, and IMEX Runge-Kutta methods**
+- **Butcher tables for various schemes**
 
-## 🧪 Tests
+## Directory Structure
+- `SundialsPy/` — Python package
+- `src/` — C++ source code and pybind11 bindings
+- `examples/` — Example scripts
 
-Run:
+## Contributing
+Contributions are welcome! Please open issues or pull requests for bug reports, feature requests, or improvements.
 
-```bash
-python test_implicit.py
-python test_arkode.py
-```
+## License
+[MIT License](LICENSE)
+
+## Acknowledgments
+- [SUNDIALS](https://computing.llnl.gov/projects/sundials) by LLNL
+- [pybind11](https://github.com/pybind/pybind11)
 
 

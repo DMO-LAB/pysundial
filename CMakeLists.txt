@@ -134,11 +134,11 @@ file(GLOB_RECURSE SOURCES
 # Display source files for debugging
 message(STATUS "Final sources for Python module: ${SOURCES}")
 
-# Create the Python extension module
-pybind11_add_module(SundialsPy ${SOURCES})
+# ONLY CHANGE: Use _SundialsPy (with underscore) instead of SundialsPy
+pybind11_add_module(_SundialsPy ${SOURCES})
 
 # Link against SUNDIALS libraries
-target_link_libraries(SundialsPy PRIVATE ${SUNDIALS_LIBRARIES})
+target_link_libraries(_SundialsPy PRIVATE ${SUNDIALS_LIBRARIES})
 
-# Install the module
-install(TARGETS SundialsPy DESTINATION SundialsPy)
+# ONLY CHANGE: Install _SundialsPy instead of SundialsPy
+install(TARGETS _SundialsPy DESTINATION SundialsPy)

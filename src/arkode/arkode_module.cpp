@@ -244,7 +244,7 @@ public:
         int flag = ARKodeSetJacFn(arkode_mem_, jac_dense_wrapper);
         check_flag(&flag, "ARKodeSetJacFn", 1);
         
-        std::cout << "Jacobian function set successfully with user_data=" << ark_data_ << std::endl;
+        // std::cout << "Jacobian function set successfully with user_data=" << ark_data_ << std::endl;
     }
         
     // Set root finding function

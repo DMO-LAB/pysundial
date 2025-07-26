@@ -67,7 +67,7 @@ CVodeSolver(int system_size,
     y_(nullptr),
     y_owner_(false),
     NLS_(nullptr) {
-    std::cout << "[DEBUG] CVodeSolver constructor start. system_size=" << system_size << ", iter_type=" << (using_newton_iteration_ ? "NEWTON" : "FUNCTIONAL") << ", use_bdf=" << use_bdf << std::endl;
+    // std::cout << "[DEBUG] CVodeSolver constructor start. system_size=" << system_size << ", iter_type=" << (using_newton_iteration_ ? "NEWTON" : "FUNCTIONAL") << ", use_bdf=" << use_bdf << std::endl;
 
     // Ensure context is initialized
     if (sunctx == nullptr) {
@@ -144,13 +144,13 @@ CVodeSolver(int system_size,
     }
 
     N_VDestroy_Serial(y0_dummy);  // cleanup dummy vector
-    std::cout << "[DEBUG] CVodeSolver constructor end." << std::endl;
+    //std::cout << "[DEBUG] CVodeSolver constructor end." << std::endl;
     }
 
     
     // Destructor
     ~CVodeSolver() {
-        std::cout << "[DEBUG] CVodeSolver destructor start." << std::endl;
+        // std::cout << "[DEBUG] CVodeSolver destructor start." << std::endl;
         // Free memory in reverse order of allocation
         if (y_owner_ && y_ != nullptr) {
             N_VDestroy_Serial(y_);
@@ -175,13 +175,13 @@ CVodeSolver(int system_size,
         delete rhs_data_;
         delete jac_data_;
         delete root_data_;
-        std::cout << "[DEBUG] CVodeSolver destructor end." << std::endl;
+        // std::cout << "[DEBUG] CVodeSolver destructor end." << std::endl;
     }
     
     // Initialize the solver with initial conditions
     void initialize(py::array_t<realtype> y0, double t0 = 0.0, 
                double rel_tol = 1.0e-6, py::array_t<realtype> abs_tol = py::array_t<realtype>()) {
-        std::cout << "[DEBUG] initialize() start." << std::endl;
+        // std::cout << "[DEBUG] initialize() start." << std::endl;
         // Set initial time
         t0_ = t0;
         
@@ -243,7 +243,7 @@ CVodeSolver(int system_size,
         } catch (const std::exception& e) {
             throw std::runtime_error(std::string("Error initializing solver: ") + e.what());
         }
-        std::cout << "[DEBUG] initialize() end." << std::endl;
+        // std::cout << "[DEBUG] initialize() end." << std::endl;
     }
     
     // Set the Jacobian function
@@ -293,7 +293,7 @@ CVodeSolver(int system_size,
     
     // Solve to a specific time point
     py::array_t<realtype> solve_to(double tout) {
-        std::cout << "[DEBUG] solve_to() start. tout=" << tout << std::endl;
+        // std::cout << "[DEBUG] solve_to() start. tout=" << tout << std::endl;
         if (y_ == nullptr) {
             throw std::runtime_error("Solver not initialized with initial conditions");
         }
@@ -303,7 +303,7 @@ CVodeSolver(int system_size,
         
         realtype t = t0_;
         int flag = CVode(cvode_mem_, tout, y_, &t, CV_NORMAL);
-        std::cout << "[DEBUG] solve_to() after CVode call. flag=" << flag << std::endl;
+        // std::cout << "[DEBUG] solve_to() after CVode call. flag=" << flag << std::endl;
         
         if (flag < 0) {
             std::cerr << "CVODE solver error code: " << flag << std::endl;
@@ -313,7 +313,7 @@ CVodeSolver(int system_size,
         // std::cout << "Integration completed successfully to t=" << t << std::endl;
         
         // Convert result to numpy array
-        std::cout << "[DEBUG] solve_to() end." << std::endl;
+        // std::cout << "[DEBUG] solve_to() end." << std::endl;
         return nvector_to_numpy(y_);
     }
     

@@ -22,7 +22,7 @@ def jacobian(t, y):
     J[1, 0] = -2.0 * mu * y[0] * y[1] - 1.0
     J[1, 1] = mu * (1.0 - y[0]**2)
     J = np.ascontiguousarray(J)
-    print(f"[DEBUG] Jacobian shape: {J.shape}, dtype: {J.dtype}, contiguous: {J.flags['C_CONTIGUOUS']}")
+    #print(f"[DEBUG] Jacobian shape: {J.shape}, dtype: {J.dtype}, contiguous: {J.flags['C_CONTIGUOUS']}")
     assert J.shape == (2, 2), f"Jacobian shape is {J.shape}, expected (2, 2)"
     assert J.dtype == np.float64, f"Jacobian dtype is {J.dtype}, expected float64"
     return J

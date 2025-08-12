@@ -34,10 +34,8 @@ private:
     // Solver type
     bool using_newton_iteration_;
     
-    // Callback data containers
-    PyRhsFnData* rhs_data_;
-    PyJacFnData* jac_data_;
-    PyRootFnData* root_data_;
+    // Unified callback/user data container (single pointer passed to CVODE)
+    CvodeUserData* user_data_;
     
     // Linear solver and matrix
     SUNMatrix A_;
@@ -59,9 +57,7 @@ CVodeSolver(int system_size,
     : N_(system_size), 
     t0_(0.0), 
     using_newton_iteration_(iter_type == IterationType::NEWTON),
-    rhs_data_(new PyRhsFnData{rhs_fn}),
-    jac_data_(nullptr),
-    root_data_(nullptr),
+    user_data_(nullptr),
     A_(nullptr),
     LS_(nullptr),
     y_(nullptr),
@@ -99,8 +95,14 @@ CVodeSolver(int system_size,
     throw std::runtime_error("Failed to initialize CVODE");
     }
 
-    // Set user data for RHS
-    flag = CVodeSetUserData(cvode_mem_, rhs_data_);
+    // Create unified user data and set once
+    user_data_ = new CvodeUserData();
+    user_data_->py_rhs_fn = rhs_fn;
+    user_data_->has_jacobian = false;
+    user_data_->has_root = false;
+    user_data_->nrtfn = 0;
+    user_data_->N = N_;
+    flag = CVodeSetUserData(cvode_mem_, user_data_);
     check_flag(&flag, "CVodeSetUserData", 1);
 
     // Set up linear solver based on iteration type
@@ -172,9 +174,7 @@ CVodeSolver(int system_size,
             CVodeFree(&cvode_mem_);
         }
         
-        delete rhs_data_;
-        delete jac_data_;
-        delete root_data_;
+    delete user_data_;
         // std::cout << "[DEBUG] CVodeSolver destructor end." << std::endl;
     }
     
@@ -237,7 +237,7 @@ CVodeSolver(int system_size,
             }
             
             // Make sure user data is properly set
-            flag = CVodeSetUserData(cvode_mem_, rhs_data_);
+            flag = CVodeSetUserData(cvode_mem_, user_data_);
             check_flag(&flag, "CVodeSetUserData in initialize", 1);
             
         } catch (const std::exception& e) {
@@ -256,39 +256,21 @@ CVodeSolver(int system_size,
             throw std::runtime_error("Cannot set Jacobian: Not using Newton iteration");
         }
         
-        // Create or update Jacobian data
-        if (jac_data_ == nullptr) {
-            jac_data_ = new PyJacFnData{jac_fn, N_};
-        } else {
-            jac_data_->py_jac_fn = jac_fn;
-        }
-        
-        // Set Jacobian function in CVODE
-        int flag = CVodeSetJacFn(cvode_mem_, jac_dense_wrapper);
+        // Update unified user data and attach CVODE-specific Jacobian wrapper
+        user_data_->py_jac_fn = jac_fn;
+        user_data_->has_jacobian = true;
+        int flag = CVodeSetJacFn(cvode_mem_, cvode_jac_dense_wrapper);
         check_flag(&flag, "CVodeSetJacFn", 1);
-        
-        // Set user data (note: this will override previous user data)
-        flag = CVodeSetUserData(cvode_mem_, jac_data_);
-        check_flag(&flag, "CVodeSetUserData", 1);
     }
     
     // Set root finding function
     void set_root_function(PyRootFn root_fn, int nrtfn) {
-        // Create or update root data
-        if (root_data_ == nullptr) {
-            root_data_ = new PyRootFnData{root_fn, nrtfn};
-        } else {
-            root_data_->py_root_fn = root_fn;
-            root_data_->nrtfn = nrtfn;
-        }
-        
-        // Set root function in CVODE
-        int flag = CVodeRootInit(cvode_mem_, nrtfn, root_wrapper);
+        // Update unified user data and set CVODE root wrapper
+        user_data_->py_root_fn = root_fn;
+        user_data_->has_root = true;
+        user_data_->nrtfn = nrtfn;
+        int flag = CVodeRootInit(cvode_mem_, nrtfn, cvode_root_wrapper);
         check_flag(&flag, "CVodeRootInit", 1);
-        
-        // Set user data
-        flag = CVodeSetUserData(cvode_mem_, root_data_);
-        check_flag(&flag, "CVodeSetUserData", 1);
     }
     
     // Solve to a specific time point

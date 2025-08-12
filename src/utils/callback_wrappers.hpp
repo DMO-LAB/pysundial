@@ -19,6 +19,17 @@ namespace sundials_py {
 // Forward declaration of the ARKodeSolver class
 class ARKodeSolver;
 
+// Unified user data for CVODE callbacks
+struct CvodeUserData {
+    PyRhsFn py_rhs_fn;           // Required RHS function
+    bool has_jacobian{false};    // Whether a Jacobian function is provided
+    PyJacFn py_jac_fn;           // Optional Jacobian function
+    bool has_root{false};        // Whether a root function is provided
+    PyRootFn py_root_fn;         // Optional root function
+    int nrtfn{0};                // Number of root functions
+    int N{0};                    // System size for validation
+};
+
 // Structure to hold Python functions for ARKODE - this will be the MAIN user_data
 struct PyArkFnData {
     PyRhsFn py_explicit_fn;  // Explicit (non-stiff) part
@@ -26,6 +37,10 @@ struct PyArkFnData {
     PyJacFn py_jacobian_fn;  // Jacobian function (optional)
     bool has_jacobian;       // Flag to indicate if Jacobian is set
     int N;                   // System size for validation
+    // Root finding
+    PyRootFn py_root_fn;     // Root function (optional)
+    bool has_root{false};    // Whether root function is set
+    int nrtfn{0};            // Number of root functions
 };
 
 // Structure to hold Python RHS function and additional data (for backwards compatibility)
@@ -287,6 +302,74 @@ inline int jac_dense_wrapper(realtype t, N_Vector y, N_Vector fy,
     }
 }
 
+// CVODE-specific dense Jacobian wrapper that expects CvodeUserData
+inline int cvode_jac_dense_wrapper(realtype t, N_Vector y, N_Vector fy,
+                            SUNMatrix J, void* user_data,
+                            N_Vector tmp1, N_Vector tmp2, N_Vector tmp3) {
+    try {
+        if (user_data == nullptr) {
+            std::cerr << "ERROR: user_data is NULL in cvode_jac_dense_wrapper" << std::endl;
+            return -1;
+        }
+
+        CvodeUserData* data = static_cast<CvodeUserData*>(user_data);
+        if (!data->has_jacobian) {
+            std::cerr << "ERROR: CVODE Jacobian function not set" << std::endl;
+            return -1;
+        }
+
+        int N = N_VGetLength_Serial(y);
+
+        py::gil_scoped_acquire gil;
+        py::array_t<realtype> y_array = nvector_to_numpy(y);
+
+        py::array_t<realtype> jac_array;
+        try {
+            jac_array = data->py_jac_fn(t, y_array);
+        } catch (const std::exception& e) {
+            std::cerr << "Exception in Python CVODE Jacobian function: " << e.what() << std::endl;
+            return -1;
+        }
+
+        py::buffer_info jac_buffer = jac_array.request();
+
+        if (jac_buffer.ndim == 2) {
+            int rows = jac_buffer.shape[0];
+            int cols = jac_buffer.shape[1];
+            if (rows != N || cols != N) {
+                std::cerr << "ERROR: CVODE Jacobian dimensions mismatch. Expected: " << N << "x" << N
+                          << ", Got: " << rows << "x" << cols << std::endl;
+                return -1;
+            }
+            realtype* jac_data = static_cast<realtype*>(jac_buffer.ptr);
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    SM_ELEMENT_D(J, i, j) = jac_data[i * cols + j];
+                }
+            }
+        } else if (jac_buffer.ndim == 1 && jac_buffer.size == N * N) {
+            realtype* jac_data = static_cast<realtype*>(jac_buffer.ptr);
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    SM_ELEMENT_D(J, i, j) = jac_data[i * N + j];
+                }
+            }
+        } else {
+            std::cerr << "[C++] ERROR: Invalid CVODE Jacobian dimensions. Expected 2D array (" << N << "x" << N
+                      << ") or 1D array of size " << (N * N) << std::endl;
+            return -1;
+        }
+
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "[EXCEPTION] in cvode_jac_dense_wrapper: " << e.what() << std::endl;
+        return -1;
+    } catch (...) {
+        std::cerr << "[UNKNOWN EXCEPTION] in cvode_jac_dense_wrapper" << std::endl;
+        return -1;
+    }
+}
+
 // CVODE right-hand side function wrapper with improved error handling
 inline int rhs_wrapper(realtype t, N_Vector y, N_Vector ydot, void* user_data) {
     // Extra validation to catch null pointers
@@ -300,8 +383,8 @@ inline int rhs_wrapper(realtype t, N_Vector y, N_Vector ydot, void* user_data) {
         return -1;
     }
     
-    // Extract Python function from user_data
-    PyRhsFnData* data = static_cast<PyRhsFnData*>(user_data);
+    // Extract Python function from user_data (CVODE path)
+    CvodeUserData* data = static_cast<CvodeUserData*>(user_data);
     
     try {
         // Acquire the GIL before calling Python
@@ -374,10 +457,15 @@ inline int root_wrapper(realtype t, N_Vector y, realtype* gout, void* user_data)
         return -1;
     }
     
-    // Extract Python function from user_data
-    PyRootFnData* data = static_cast<PyRootFnData*>(user_data);
+    // Extract Python function from user_data (ARKODE path uses PyArkFnData)
+    PyArkFnData* data = static_cast<PyArkFnData*>(user_data);
     
     try {
+        // If no root function set, return success with untouched gout
+        if (!data->has_root || data->nrtfn <= 0) {
+            return 0;
+        }
+        
         // Acquire the GIL before calling Python
         py::gil_scoped_acquire gil;
         
@@ -416,6 +504,48 @@ inline int root_wrapper(realtype t, N_Vector y, realtype* gout, void* user_data)
     }
     catch (...) {
         std::cerr << "[UNKNOWN EXCEPTION] in root_wrapper" << std::endl;
+        return -1;
+    }
+}
+
+// CVODE-specific root wrapper that expects CvodeUserData
+inline int cvode_root_wrapper(realtype t, N_Vector y, realtype* gout, void* user_data) {
+    if (user_data == nullptr) {
+        std::cerr << "ERROR: user_data is NULL in cvode_root_wrapper" << std::endl;
+        return -1;
+    }
+    if (y == nullptr || gout == nullptr) {
+        std::cerr << "ERROR: Null vector or output array in cvode_root_wrapper" << std::endl;
+        return -1;
+    }
+
+    CvodeUserData* data = static_cast<CvodeUserData*>(user_data);
+    if (!data->has_root) {
+        // No-op root function; return success
+        for (int i = 0; i < data->nrtfn; ++i) gout[i] = 0.0;
+        return 0;
+    }
+
+    try {
+        py::gil_scoped_acquire gil;
+        py::array_t<realtype> y_array = nvector_to_numpy(y);
+        py::array_t<realtype> g_array = data->py_root_fn(t, y_array);
+        py::buffer_info g_buffer = g_array.request();
+        if (g_buffer.size != data->nrtfn) {
+            std::cerr << "[ERROR] CVODE Root function size mismatch. Expected: "
+                      << data->nrtfn << ", Got: " << g_buffer.size << std::endl;
+            return -1;
+        }
+        realtype* g_data = static_cast<realtype*>(g_buffer.ptr);
+        for (int i = 0; i < data->nrtfn; ++i) {
+            gout[i] = g_data[i];
+        }
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "[EXCEPTION] in cvode_root_wrapper: " << e.what() << std::endl;
+        return -1;
+    } catch (...) {
+        std::cerr << "[UNKNOWN EXCEPTION] in cvode_root_wrapper" << std::endl;
         return -1;
     }
 }

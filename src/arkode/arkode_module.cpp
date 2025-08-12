@@ -249,21 +249,13 @@ public:
         
     // Set root finding function
     void set_root_function(PyRootFn root_fn, int nrtfn) {
-        // Create or update root data
-        if (root_data_ == nullptr) {
-            root_data_ = new PyRootFnData{root_fn, nrtfn};
-        } else {
-            root_data_->py_root_fn = root_fn;
-            root_data_->nrtfn = nrtfn;
-        }
-        
-        // Set root function in ARKODE
+        // Attach root function to the main user_data and initialize ARKODE roots
+        ark_data_->py_root_fn = root_fn;
+        ark_data_->has_root = true;
+        ark_data_->nrtfn = nrtfn;
+
         int flag = ARKodeRootInit(arkode_mem_, nrtfn, root_wrapper);
         check_flag(&flag, "ARKodeRootInit", 1);
-        
-        // Note: We keep the main user_data as ark_data_ for the main callbacks
-        // Root finding will need special handling or we need to modify the callback structure
-        std::cout << "Warning: Root finding with mixed user_data not fully implemented" << std::endl;
     }
     
     // Set adaptive step size parameters (using modern SUNDIALS approach)

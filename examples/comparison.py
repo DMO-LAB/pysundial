@@ -4,7 +4,7 @@ import cantera as ct
 import time
 import os
 from combustion import SundialsChemicalIntegrator, SundialsIntegratorConfig
-
+import SundialsPy
 def compare_sundials_solvers():
     """
     Compare CVODE and ARKODE solvers on 0D combustion problems.
@@ -34,6 +34,12 @@ def compare_sundials_solvers():
         ('cvode_bdf', 'CVODE BDF'),
         ('arkode_erk', 'ARKODE ERK')
     ]
+
+    available_tables = {
+            'HEUN_EULER_2_1_2': SundialsPy.arkode.ButcherTable.HEUN_EULER_2_1_2,
+            'BOGACKI_SHAMPINE_4_2_3': SundialsPy.arkode.ButcherTable.BOGACKI_SHAMPINE_4_2_3,
+            'ARK548L2SA_ERK_8_4_5': SundialsPy.arkode.ButcherTable.ARK548L2SA_ERK_8_4_5,
+        }
     
     # Define tolerances
     tolerances = [
@@ -65,7 +71,10 @@ def compare_sundials_solvers():
                 # Configure integrator
                 config = SundialsIntegratorConfig(
                     integrator_list=[method_key],
-                    tolerance_list=[(rtol, atol)]
+                    tolerance_list=[(rtol, atol)],
+                    butcher_tables={
+                        'arkode_erk': available_tables
+                    }
                 )
                 
                 # Create integrator

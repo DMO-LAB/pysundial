@@ -13,10 +13,21 @@ class CombustionStage(Enum):
     POSTIGNITION = 2
 
 class SundialsIntegratorConfig:
-    """Configuration for SUNDIALS-based integrator."""
+    """Configuration for SUNDIALS-based integrator with Butcher table support."""
+    
     def __init__(self, 
                  integrator_list=None, 
-                 tolerance_list=None):
+                 tolerance_list=None,
+                 butcher_tables=None):
+        """
+        Initialize integrator configuration.
+        
+        Args:
+            integrator_list: List of integrator methods
+            tolerance_list: List of (rtol, atol) tuples
+            butcher_tables: Dict mapping integrator names to Butcher table options
+                           or list of Butcher tables for arkode_erk methods
+        """
         # Default integrators: CVODE BDF, CVODE Adams, ARKODE ERK
         if integrator_list is None:
             self.integrator_list = ['cvode_bdf', 'cvode_adams', 'arkode_erk']
@@ -28,12 +39,143 @@ class SundialsIntegratorConfig:
             self.tolerance_list = [(1e-6, 1e-8), (1e-12, 1e-14)]
         else:
             self.tolerance_list = tolerance_list
+        
+        # Handle Butcher table configuration
+        if butcher_tables is None:
+            # Default Butcher tables for ARKode ERK methods
+            self.butcher_tables = {
+                'arkode_erk': [
+                    SundialsPy.arkode.ButcherTable.ARK548L2SA_ERK_8_4_5,  # Default
+                    SundialsPy.arkode.ButcherTable.ZONNEVELD_5_3_4,
+                    SundialsPy.arkode.ButcherTable.ARK324L2SA_ERK_4_2_3,
+                ]
+            }
+        else:
+            self.butcher_tables = butcher_tables
+        
+        # Validate configuration
+        self._validate_config()
+    
+    def _validate_config(self):
+        """Validate the configuration parameters."""
+        # Check that butcher_tables keys are valid integrator names
+        for integrator_name in self.butcher_tables.keys():
+            if integrator_name not in ['arkode_erk', 'arkode_dirk', 'arkode_imex']:
+                print(f"Warning: Butcher tables specified for non-ARKode integrator: {integrator_name}")
+        
+        # Ensure ARKode methods have Butcher tables if they're in the integrator list
+        arkode_methods = [method for method in self.integrator_list if method.startswith('arkode')]
+        for method in arkode_methods:
+            if method not in self.butcher_tables:
+                print(f"Warning: No Butcher tables specified for {method}, using default")
     
     def get_action_list(self):
-        """Get list of integrator/tolerance combinations."""
-        return [(integ, rtol, atol) 
-                for integ in self.integrator_list 
-                for rtol, atol in self.tolerance_list]
+        """Get list of integrator/tolerance/butcher_table combinations."""
+        action_list = []
+        
+        for integ in self.integrator_list:
+            for rtol, atol in self.tolerance_list:
+                if integ.startswith('arkode') and integ in self.butcher_tables:
+                    # Add each Butcher table as a separate action for ARKode methods
+                    for butcher_table in self.butcher_tables[integ]:
+                        action_list.append((integ, rtol, atol, butcher_table))
+                else:
+                    # For non-ARKode methods, no Butcher table needed
+                    action_list.append((integ, rtol, atol, None))
+        
+        return action_list
+    
+    @classmethod
+    def create_arkode_config(cls, butcher_table_names=None):
+        """
+        Create a configuration focused on ARKode ERK methods with specific Butcher tables.
+        
+        Args:
+            butcher_table_names: List of Butcher table names to use
+            
+        Returns:
+            SundialsIntegratorConfig: Configuration with specified ARKode options
+        """
+        # Available Butcher tables (extend this list as needed)
+        available_tables = {
+            'HEUN_EULER_2_1_2': SundialsPy.arkode.ButcherTable.HEUN_EULER_2_1_2,
+            'BOGACKI_SHAMPINE_4_2_3': SundialsPy.arkode.ButcherTable.BOGACKI_SHAMPINE_4_2_3,
+            'ARK324L2SA_ERK_4_2_3': SundialsPy.arkode.ButcherTable.ARK324L2SA_ERK_4_2_3,
+            'ZONNEVELD_5_3_4': SundialsPy.arkode.ButcherTable.ZONNEVELD_5_3_4,
+            'ARK548L2SA_ERK_8_4_5': SundialsPy.arkode.ButcherTable.ARK548L2SA_ERK_8_4_5,
+            'ARK436L2SA_ERK_6_3_4': SundialsPy.arkode.ButcherTable.ARK436L2SA_ERK_6_3_4,
+            'ARK437L2SA_ERK_7_3_4': SundialsPy.arkode.ButcherTable.ARK437L2SA_ERK_7_3_4,
+            'ARK548L2SA_ERK_8_4_5': SundialsPy.arkode.ButcherTable.ARK548L2SA_ERK_8_4_5,
+            'VERNER_8_5_6': SundialsPy.arkode.ButcherTable.VERNER_8_5_6,
+            'FEHLBERG_13_7_8': SundialsPy.arkode.ButcherTable.FEHLBERG_13_7_8,
+            'SDIRK_2_1_2': SundialsPy.arkode.ButcherTable.SDIRK_2_1_2,
+            'BILLINGTON_3_3_2': SundialsPy.arkode.ButcherTable.BILLINGTON_3_3_2,
+            'TRBDF2_3_3_2': SundialsPy.arkode.ButcherTable.TRBDF2_3_3_2,
+            'KVAERNO_4_2_3': SundialsPy.arkode.ButcherTable.KVAERNO_4_2_3,
+            'ARK324L2SA_DIRK_4_2_3': SundialsPy.arkode.ButcherTable.ARK324L2SA_DIRK_4_2_3,
+            'CASH_5_2_4': SundialsPy.arkode.ButcherTable.CASH_5_2_4,
+            'CASH_5_3_4': SundialsPy.arkode.ButcherTable.CASH_5_3_4,
+            'SDIRK_5_3_4': SundialsPy.arkode.ButcherTable.SDIRK_5_3_4,
+            'ARK436L2SA_DIRK_6_3_4': SundialsPy.arkode.ButcherTable.ARK436L2SA_DIRK_6_3_4,
+            'ARK437L2SA_DIRK_7_3_4': SundialsPy.arkode.ButcherTable.ARK437L2SA_DIRK_7_3_4,
+            'KVAERNO_7_4_5': SundialsPy.arkode.ButcherTable.KVAERNO_7_4_5,
+            'ARK548L2SA_DIRK_8_4_5': SundialsPy.arkode.ButcherTable.ARK548L2SA_DIRK_8_4_5,
+            'ARK324L2SA_ERK_4_2_3_DIRK_4_2_3': SundialsPy.arkode.ButcherTable.ARK324L2SA_ERK_4_2_3_DIRK_4_2_3,
+            'ARK436L2SA_ERK_6_3_4_DIRK_6_3_4': SundialsPy.arkode.ButcherTable.ARK436L2SA_ERK_6_3_4_DIRK_6_3_4,
+            'ARK437L2SA_ERK_7_3_4_DIRK_7_3_4': SundialsPy.arkode.ButcherTable.ARK437L2SA_ERK_7_3_4_DIRK_7_3_4,
+            'ARK548L2SA_ERK_8_4_5_DIRK_8_4_5': SundialsPy.arkode.ButcherTable.ARK548L2SA_ERK_8_4_5_DIRK_8_4_5
+        }
+        
+        if butcher_table_names is None:
+            # Use a good selection of tables
+            butcher_table_names = ['ARK548L2SA_ERK_8_4_5', 'ZONNEVELD_5_3_4', 'DORMAND_PRINCE_7_4_5']
+        
+        # Get the actual Butcher table objects
+        butcher_tables_list = []
+        for name in butcher_table_names:
+            if name in available_tables:
+                butcher_tables_list.append(available_tables[name])
+            else:
+                print(f"Warning: Unknown Butcher table '{name}', skipping")
+        
+        return cls(
+            integrator_list=['arkode_erk'],
+            tolerance_list=[(1e-6, 1e-8), (1e-9, 1e-11), (1e-12, 1e-14)],
+            butcher_tables={'arkode_erk': butcher_tables_list}
+        )
+    
+    def add_butcher_table(self, integrator_name, butcher_table):
+        """Add a Butcher table to an integrator configuration."""
+        if integrator_name not in self.butcher_tables:
+            self.butcher_tables[integrator_name] = []
+        self.butcher_tables[integrator_name].append(butcher_table)
+    
+    def get_method_info(self, action_idx):
+        """Get detailed information about a specific action."""
+        actions = self.get_action_list()
+        if action_idx >= len(actions):
+            raise IndexError(f"Action index {action_idx} out of range")
+        
+        action = actions[action_idx]
+        if len(action) == 4:
+            method, rtol, atol, butcher_table = action
+            return {
+                'method': method,
+                'rtol': rtol,
+                'atol': atol,
+                'butcher_table': butcher_table,
+                'description': f"{method} with rtol={rtol}, atol={atol}, Butcher table={butcher_table}"
+            }
+        else:
+            method, rtol, atol = action
+            return {
+                'method': method,
+                'rtol': rtol,
+                'atol': atol,
+                'butcher_table': None,
+                'description': f"{method} with rtol={rtol}, atol={atol}"
+            }
+
 
 class SundialsChemicalIntegrator:
     """Handles integration of chemical kinetics using SUNDIALS solvers."""
@@ -173,14 +315,14 @@ class SundialsChemicalIntegrator:
         # Combine into full derivative vector
         return np.hstack([dTdt, dYdt])
     
-    def create_solver(self, method, rtol, atol):
+    def create_solver(self, method, rtol, atol, butcher_table=None):
         """Create a SUNDIALS solver for the combustion problem.
         
         Args:
             method: Solver method ('cvode_bdf', 'cvode_adams', 'arkode_erk', etc.)
             rtol: Relative tolerance
             atol: Absolute tolerance
-            
+            butcher_table: Butcher table for ARKode
         Returns:
             solver: Initialized SUNDIALS solver
         """
@@ -209,11 +351,13 @@ class SundialsChemicalIntegrator:
                 iter_type=SundialsPy.cvode.IterationType.FUNCTIONAL
             )
         elif method == 'arkode_erk':
+            # Use the provided Butcher table or default
+            table = butcher_table if butcher_table else SundialsPy.arkode.ButcherTable.ARK548L2SA_ERK_8_4_5
             solver = SundialsPy.arkode.ARKodeSolver(
                 system_size=system_size,
                 explicit_fn=self.dydt,
                 implicit_fn=None,
-                butcher_table=SundialsPy.arkode.ButcherTable.ARK548L2SA_ERK_8_4_5
+                butcher_table=table
             )
         else:
             raise ValueError(f"Unknown solver method: {method}")
@@ -233,13 +377,13 @@ class SundialsChemicalIntegrator:
         Returns:
             result: Dictionary with integration results
         """
-        method, rtol, atol = self.action_list[action_idx]
+        method, rtol, atol, butcher_table = self.action_list[action_idx]
         t_end = self.t + self.timestep
         previous_state = self.y.copy()
         
         try:
             # Create and initialize the solver
-            solver = self.create_solver(method, rtol, atol)
+            solver = self.create_solver(method, rtol, atol, butcher_table)
             self.current_solver = solver
             
             # Perform the integration
@@ -387,11 +531,11 @@ class SundialsChemicalIntegrator:
             # Fixed output points
             times = np.linspace(self.t + 1e-10, end_time, n_points)
             
-            method, rtol, atol = self.action_list[action_idx]
+            method, rtol, atol, butcher_table = self.action_list[action_idx]
             print(f"Solving with {method}, rtol={rtol}, atol={atol}")
             
             # Create and initialize solver
-            solver = self.create_solver(method, rtol, atol)
+            solver = self.create_solver(method, rtol, atol, butcher_table)
             
             # Solve and time it
             start_time = time.time()
@@ -432,6 +576,7 @@ class SundialsChemicalIntegrator:
                 # Calculate next timestep (don't overshoot end_time)
                 next_dt = min(self.timestep, end_time - self.t)
                 if next_dt <= 0:
+                    print(f"Reached end_time at t={self.t}")
                     break
                 
                 # Adjust timestep

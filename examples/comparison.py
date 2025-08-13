@@ -5,6 +5,8 @@ import time
 import os
 from combustion import SundialsChemicalIntegrator, SundialsIntegratorConfig
 import SundialsPy
+
+
 def compare_sundials_solvers():
     """
     Compare CVODE and ARKODE solvers on 0D combustion problems.
@@ -32,7 +34,8 @@ def compare_sundials_solvers():
     # Define integrator methods
     methods = [
         ('cvode_bdf', 'CVODE BDF'),
-        ('arkode_erk', 'ARKODE ERK')
+        # ('arkode_erk', 'ARKODE ERK'),
+        ('cpp_rk23', 'C++ RK23')
     ]
 
     available_tables = {

@@ -5,6 +5,7 @@ import time
 from enum import Enum
 from typing import Dict, Any, List, Optional, Tuple
 import SundialsPy  # Your SUNDIALS wrapper
+import rk_solver_cpp
 
 class CombustionStage(Enum):
     """Different stages of combustion process."""
@@ -30,7 +31,7 @@ class SundialsIntegratorConfig:
         """
         # Default integrators: CVODE BDF, CVODE Adams, ARKODE ERK
         if integrator_list is None:
-            self.integrator_list = ['cvode_bdf', 'cvode_adams', 'arkode_erk']
+            self.integrator_list = ['cvode_bdf', 'cvode_adams', 'arkode_erk', 'cpp_rk23']
         else:
             self.integrator_list = integrator_list
             
@@ -315,7 +316,7 @@ class SundialsChemicalIntegrator:
         # Combine into full derivative vector
         return np.hstack([dTdt, dYdt])
     
-    def create_solver(self, method, rtol, atol, butcher_table=None):
+    def create_solver(self, method, rtol, atol, butcher_table=None, t_end=None):
         """Create a SUNDIALS solver for the combustion problem.
         
         Args:
@@ -359,11 +360,19 @@ class SundialsChemicalIntegrator:
                 implicit_fn=None,
                 butcher_table=table
             )
+        elif method.lower().startswith('cpp_'):
+            solver = rk_solver_cpp.RK23(
+                self.dydt, float(self.t), np.array(self.y), 
+                float(t_end), rtol=rtol, atol=atol
+            )
         else:
             raise ValueError(f"Unknown solver method: {method}")
         
         # Initialize the solver
-        solver.initialize(self.y, self.t, rtol, abs_tol)
+        if method.lower().startswith('cpp_'):
+            pass
+        else:
+            solver.initialize(self.y, self.t, rtol, abs_tol)
         
         return solver
     
@@ -383,14 +392,20 @@ class SundialsChemicalIntegrator:
         
         try:
             # Create and initialize the solver
-            solver = self.create_solver(method, rtol, atol, butcher_table)
+            solver = self.create_solver(method, rtol, atol, butcher_table, t_end)
             self.current_solver = solver
-            
-            # Perform the integration
-            start_time = time.time()
-            new_y = solver.solve_single(t_end)
-            cpu_time = time.time() - start_time
-            
+
+            if method.lower().startswith('cpp_'):
+                start_time = time.time()
+                result = rk_solver_cpp.solve_ivp(solver, np.array(t_end))
+                cpu_time = time.time() - start_time
+                new_y = result['y'][-1]
+            else:
+                # Perform the integration
+                start_time = time.time()
+                new_y = solver.solve_single(t_end)
+                cpu_time = time.time() - start_time
+                
             # Calculate error if reference solution exists
             if self.reference_solution and self.step_count < len(self.reference_solution['temperatures']):
                 ref_T = self.reference_solution['temperatures'][self.step_count]
@@ -440,15 +455,15 @@ class SundialsChemicalIntegrator:
             self.t = t_end
             self.y = new_y
             
-            # Check if we've reached the maximum number of steps
-            if self.step_count >= self.completed_steps:
-                self.end_simulation = True
-                print(f"Ending simulation at step {self.step_count}")
-                self.stage_cpu_times[self.current_stage.value] += (
-                    np.sum(self.history['cpu_times']) - 
-                    self.stage_cpu_times[CombustionStage.IGNITION.value] - 
-                    self.stage_cpu_times[CombustionStage.PREIGNITION.value]
-                )
+            # # Check if we've reached the maximum number of steps
+            # if self.step_count >= self.completed_steps:
+            #     self.end_simulation = True
+            #     print(f"Ending simulation at step {self.step_count}")
+            #     self.stage_cpu_times[self.current_stage.value] += (
+            #         np.sum(self.history['cpu_times']) - 
+            #         self.stage_cpu_times[CombustionStage.IGNITION.value] - 
+            #         self.stage_cpu_times[CombustionStage.PREIGNITION.value]
+            #     )
             
             # Return results
             return {
@@ -535,7 +550,7 @@ class SundialsChemicalIntegrator:
             print(f"Solving with {method}, rtol={rtol}, atol={atol}")
             
             # Create and initialize solver
-            solver = self.create_solver(method, rtol, atol, butcher_table)
+            solver = self.create_solver(method, rtol, atol, butcher_table, end_time)
             
             # Solve and time it
             start_time = time.time()

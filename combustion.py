@@ -438,10 +438,10 @@ class SundialsChemicalIntegrator:
             
             # Handle end conditions        
             if self.current_stage == CombustionStage.POSTIGNITION:
-                if (self.stage_steps[CombustionStage.IGNITION.value] > 0 and 
-                    self.step_count > 2 * self.stage_steps[CombustionStage.IGNITION.value]):
-                    print(f"Stopping simulation at step {self.step_count}")
-                    self.end_simulation = True
+                # if (self.stage_steps[CombustionStage.IGNITION.value] > 0 and 
+                #     self.step_count > 2 * self.stage_steps[CombustionStage.IGNITION.value]):
+                #     print(f"Stopping simulation at step {self.step_count} after {self.stage_steps[CombustionStage.IGNITION.value]} steps")
+                #     self.end_simulation = True
                     self.stage_cpu_times[self.current_stage.value] += (
                         np.sum(self.history['cpu_times']) - 
                         self.stage_cpu_times[CombustionStage.IGNITION.value] - 
@@ -454,17 +454,7 @@ class SundialsChemicalIntegrator:
             # Update current state
             self.t = t_end
             self.y = new_y
-            
-            # # Check if we've reached the maximum number of steps
-            # if self.step_count >= self.completed_steps:
-            #     self.end_simulation = True
-            #     print(f"Ending simulation at step {self.step_count}")
-            #     self.stage_cpu_times[self.current_stage.value] += (
-            #         np.sum(self.history['cpu_times']) - 
-            #         self.stage_cpu_times[CombustionStage.IGNITION.value] - 
-            #         self.stage_cpu_times[CombustionStage.PREIGNITION.value]
-            #     )
-            
+    
             # Return results
             return {
                 'success': True,
@@ -596,7 +586,6 @@ class SundialsChemicalIntegrator:
                 
                 # Adjust timestep
                 self.timestep = next_dt
-                
                 # Perform integration step
                 result = self.integrate_step(action_idx)
                 

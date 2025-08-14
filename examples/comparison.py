@@ -14,20 +14,12 @@ def compare_sundials_solvers():
     # Define test cases
     test_cases = [
         {
-            'name': 'hydrogen_stoich',
-            'mechanism': 'h2o2.yaml',
-            'fuel': 'H2',
-            'temperature': 1200.0,
-            'pressure': 101325.0,
-            'phi': 1.0
-        },
-        {
-            'name': 'methane_lean',
+            'name': 'methane',
             'mechanism': 'gri30.yaml',
             'fuel': 'CH4',
-            'temperature': 1000.0,
-            'pressure': 101325.0 * 5,  # 5 atm
-            'phi': 0.7
+            'temperature': 1200.0,
+            'pressure': 101325.0 * 1,  # 5 atm
+            'phi': 1
         }
     ]
     
@@ -47,7 +39,7 @@ def compare_sundials_solvers():
     # Define tolerances
     tolerances = [
         (1e-6, 1e-8, 'Loose'),
-        (1e-12, 1e-14, 'Tight')
+        (1e-10, 1e-12, 'Tight')
     ]
     
     # Create results directory
@@ -87,7 +79,7 @@ def compare_sundials_solvers():
                     pressure=case['pressure'],
                     fuel=case['fuel'],
                     phi=case['phi'],
-                    timestep=1e-6,  # Start with a small timestep
+                    timestep=1e-5,  # Start with a small timestep
                     config=config
                 )
                 
@@ -96,15 +88,15 @@ def compare_sundials_solvers():
                 try:
                     start_time = time.time()
                     
-                    # For hydrogen, use fixed timesteps
-                    if case['fuel'] == 'H2':
-                        end_time = 1e-3  # 1 ms for hydrogen
-                        n_points = 200
-                        integrator.solve(end_time=end_time, action_idx=0, n_points=n_points)
-                    else:
-                        # For other fuels, use adaptive stepping
-                        end_time = 5e-3  # 5 ms for methane (may need adjustment)
-                        integrator.solve(end_time=end_time, action_idx=0)
+                    # # For hydrogen, use fixed timesteps
+                    # if case['fuel'] == 'H2':
+                    #     end_time = 1e-3  # 1 ms for hydrogen
+                    #     n_points = 200
+                    #     integrator.solve(end_time=end_time, action_idx=0, n_points=n_points)
+                    # else:
+                    #     # For other fuels, use adaptive stepping
+                    end_time = 0.05  # 5 ms for methane (may need adjustment)
+                    integrator.solve(end_time=end_time, action_idx=0)
                     
                     wall_time = time.time() - start_time
                     

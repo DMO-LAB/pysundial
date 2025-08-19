@@ -658,8 +658,8 @@ if __name__ == "__main__":
     # Create different params
     fuels = ['nc12h26']
     temperatures = [700, 800, 900, 1000, 1100, 1200, 1300, 1400]
-    pressures = [ct.one_atm, 2*ct.one_atm, 5*ct.one_atm, 10*ct.one_atm, 20*ct.one_atm]
-    phis = [0.01, 0.1, 0.2, 0.5, 0.8, 1.0, 1.2, 1.5, 1.8, 2.0]
+    pressures = [ct.one_atm]
+    phis = [100000, 10000, 1000, 100, 10, 1]
     # num_conditions = 100
     end_times = [5e-3]
     timestep = 1e-6

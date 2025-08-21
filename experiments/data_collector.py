@@ -43,6 +43,25 @@ def setup_combustion_chemistry(mechanism: str, fuel: str, oxidizer: str,
     gas.TPX = temperature, pressure, gas.X
     return gas
 
+def setup_combustion_chemistry_with_data(mechanism: str,temperature: float, pressure: float, data: np.ndarray) -> ct.Solution:
+    """Set up the combustion chemistry with Cantera.
+    
+    Args:
+        mechanism: Path to mechanism file
+        fuel: Fuel species name
+        oxidizer: Oxidizer mixture string
+        phi: Equivalence ratio
+        temperature: Initial temperature (K)
+        pressure: Initial pressure (Pa)
+    
+    Returns:
+        gas: Initialized Cantera gas object
+    """
+    gas = ct.Solution(mechanism)
+    gas.TPX = temperature, pressure, data
+    return gas
+
+
 def get_initial_state(gas: ct.Solution) -> np.ndarray:
     """Get initial state vector [T, Y1, Y2, ...].
     
@@ -415,7 +434,7 @@ def run_integration_experiment(method: str, gas: ct.Solution, y0: np.ndarray,
 # MAIN EXPERIMENTAL SETUP
 # ============================================================================
 
-def setup_experiment_parameters(mechanism, fuel, oxidizer, phi, temperature, pressure, rtol=1e-6, atol=1e-8, end_time=1e-1, timestep=1e-5, species_to_track=None) -> Dict[str, Any]:
+def setup_experiment_parameters(mechanism, fuel, oxidizer, phi, data, rtol=1e-6, atol=1e-8, end_time=1e-1, timestep=1e-5, species_to_track=None) -> Dict[str, Any]:
     """Set up the experimental parameters.
     
     Returns:
@@ -426,8 +445,7 @@ def setup_experiment_parameters(mechanism, fuel, oxidizer, phi, temperature, pre
         'fuel': fuel,
         'oxidizer': oxidizer,
         'phi': phi,
-        'temperature': temperature,
-        'pressure': ct.one_atm,
+        'data': data,
         'rtol': rtol,
         'atol': atol,
         'end_time': end_time,
@@ -449,9 +467,8 @@ def run_experiments_and_rank(methods, tolerances, params, fuel, temperature, pre
             params[rtol] = rtol
             params[atol] = atol
             # Setup chemistry
-            gas = setup_combustion_chemistry(
-                params['mechanism'], params['fuel'], params['oxidizer'],
-                params['phi'], params['temperature'], params['pressure']
+            gas = setup_combustion_chemistry_with_data(
+                params['mechanism'], params['temperature'], params['pressure'], params['data']
             )
 
             params['species_to_track'] = gas.species_names
@@ -549,7 +566,5 @@ if __name__ == "__main__":
 
         mechanism = fuel_to_mechanism[fuel]
         oxidizer = 'O2:1, N2:3.76'
-        params = setup_experiment_parameters(mechanism=mechanism, fuel=fuel, oxidizer=oxidizer, phi=phi, temperature=temperature, pressure=pressure, end_time=end_time, timestep=timestep)
+        params = setup_experiment_parameters(mechanism=mechanism, fuel=fuel, oxidizer=oxidizer, phi=phi, data=data, end_time=end_time, timestep=timestep)
         all_results, integrator_ranks = run_experiments_and_rank(methods, tolerances, params, fuel, temperature, pressure, time_limit=120.0, base_dir=base_dir)
-
-        print("------------------------------------------------------------------------------------------------")

@@ -4,6 +4,7 @@
 #include <pybind11/numpy.h>
 #include <pybind11/functional.h>
 #include <pybind11/stl.h>
+#include <iostream>
 
 #include <arkode/arkode.h>
 #include <arkode/arkode_butcher.h>
@@ -17,7 +18,6 @@
 #include <sundials/sundials_types.h>
 #include <nvector/nvector_serial.h>
 #include <optional>
-#include <iostream>
 
 #include "../common/common.hpp"
 #include "../utils/callback_wrappers.hpp"
@@ -209,10 +209,12 @@ public:
             
             // Set tolerances
             if (abs_tol.size() > 0) {
+                // std::cout << "abs_tol is not empty setting to " << abs_tol << std::endl;
                 N_Vector abs_tol_vec = numpy_to_nvector(abs_tol);
                 flag = ARKodeSVtolerances(arkode_mem_, rel_tol, abs_tol_vec);
                 N_VDestroy_Serial(abs_tol_vec);
             } else {
+                // std::cout << "abs_tol is empty setting to 1e-8" << std::endl;
                 flag = ARKodeSStolerances(arkode_mem_, rel_tol, 1e-8);
             }
             check_flag(&flag, "ARKode tolerances", 1);
@@ -223,6 +225,39 @@ public:
             
         } catch (const std::exception& e) {
             throw std::runtime_error(std::string("Error initializing solver: ") + e.what());
+        }
+        if (using_arkstep_) {
+            // For ARKStep, we need to set both ERK and DIRK tables
+            if (is_imex_pair(butcher_table_)) {
+                // std::cout << "Setting ARKStep to ImEx pair " << get_butcher_table_description(butcher_table_) << std::endl;
+                // ImEx pair - set both tables (both non-negative)
+                ARKODE_ERKTableID erk_id = get_erk_table_id(butcher_table_);
+                ARKODE_DIRKTableID dirk_id = get_dirk_table_id(butcher_table_);
+                
+                int flag = ARKStepSetTableNum(arkode_mem_, dirk_id, erk_id);
+                check_flag(&flag, "ARKStepSetTableNum", 1);
+            } else if (is_implicit_method(butcher_table_)) {
+                // std::cout << "Setting ARKStep to implicit method " << get_butcher_table_description(butcher_table_) << std::endl;
+                // Implicit method - set itable to DIRK ID, etable to negative value
+                ARKODE_DIRKTableID dirk_id = get_dirk_table_id(butcher_table_);
+                
+                int flag = ARKStepSetTableNum(arkode_mem_, dirk_id, static_cast<ARKODE_ERKTableID>(-1));
+                check_flag(&flag, "ARKStepSetTableNum", 1);
+            } else {
+                // std::cout << "Setting ARKStep to explicit method " << get_butcher_table_description(butcher_table_) << std::endl;
+                // Explicit method - set itable to negative value, etable to ERK ID
+                ARKODE_ERKTableID erk_id = get_erk_table_id(butcher_table_);
+                
+                int flag = ARKStepSetTableNum(arkode_mem_, static_cast<ARKODE_DIRKTableID>(-1), erk_id);
+                check_flag(&flag, "ARKStepSetTableNum", 1);
+            }
+        } else {
+            // std::cout << "Setting ERKStep to " << get_butcher_table_description(butcher_table_) << std::endl;
+            // For ERKStep, set the ERK table
+            ARKODE_ERKTableID erk_id = get_erk_table_id(butcher_table_);
+            
+            int flag = ERKStepSetTableNum(arkode_mem_, erk_id);
+            check_flag(&flag, "ERKStepSetTableNum", 1);
         }
     }
 
@@ -506,11 +541,24 @@ void init_arkode_module(py::module_ &m) {
         .value("FEHLBERG_13_7_8", ButcherTable::FEHLBERG_13_7_8)
         
         // Implicit methods
+        .value("BACKWARD_EULER_1_1", ButcherTable::BACKWARD_EULER_1_1)
+        .value("ARK2_DIRK_3_1_2", ButcherTable::ARK2_DIRK_3_1_2)
         .value("SDIRK_2_1_2", ButcherTable::SDIRK_2_1_2)
+        .value("IMPLICIT_MIDPOINT_1_2", ButcherTable::IMPLICIT_MIDPOINT_1_2)
+        .value("IMPLICIT_TRAPEZOIDAL_2_2", ButcherTable::IMPLICIT_TRAPEZOIDAL_2_2)
+        .value("ESDIRK325L2SA_5_2_3", ButcherTable::ESDIRK325L2SA_5_2_3)
+        .value("ESDIRK324L2SA_4_2_3", ButcherTable::ESDIRK324L2SA_4_2_3)
+        .value("ESDIRK32I5L2SA_5_2_3", ButcherTable::ESDIRK32I5L2SA_5_2_3)
         .value("BILLINGTON_3_3_2", ButcherTable::BILLINGTON_3_3_2)
         .value("TRBDF2_3_3_2", ButcherTable::TRBDF2_3_3_2)
         .value("KVAERNO_4_2_3", ButcherTable::KVAERNO_4_2_3)
         .value("ARK324L2SA_DIRK_4_2_3", ButcherTable::ARK324L2SA_DIRK_4_2_3)
+        .value("ESDIRK436L2SA_6_3_4", ButcherTable::ESDIRK436L2SA_6_3_4)
+        .value("ESDIRK43I6L2SA_6_3_4", ButcherTable::ESDIRK43I6L2SA_6_3_4)
+        .value("QESDIRK436L2SA_6_3_4", ButcherTable::QESDIRK436L2SA_6_3_4)
+        .value("ESDIRK437L2SA_7_3_4", ButcherTable::ESDIRK437L2SA_7_3_4)
+        .value("ESDIRK547L2SA2_7_4_5", ButcherTable::ESDIRK547L2SA2_7_4_5)
+        .value("KVAERNO_5_3_4", ButcherTable::KVAERNO_5_3_4)
         .value("CASH_5_2_4", ButcherTable::CASH_5_2_4)
         .value("CASH_5_3_4", ButcherTable::CASH_5_3_4)
         .value("SDIRK_5_3_4", ButcherTable::SDIRK_5_3_4)

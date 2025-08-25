@@ -560,6 +560,7 @@ if __name__ == "__main__":
         pressure = np.random.randint(5, 21) * ct.one_atm
         fuel = np.random.choice(fuels)
         end_time = np.random.choice(end_times)
+        
         print(f"************************************************** **************************************************")
         print(f"Running experiment for {fuel} at {temperature} K and {pressure} atm with phi = {phi} and end_time = {end_time}")
         print(f"************************************************** **************************************************")

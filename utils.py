@@ -1,4 +1,4 @@
-import rk_solver_cpp
+
 from scipy.integrate import ode
 import SundialsPy as SP
 import numpy as np
@@ -360,6 +360,101 @@ def run_integration_experiment(method: str, gas: ct.Solution, y0: np.ndarray,
         'success': step_count > 0,
         'timed_out': total_wall_time > time_limit
     }
+
+
+def run_integration_with_switching(method_dict: dict[int, Any], gas: ct.Solution, y0: np.ndarray, 
+                             t0: float, end_time: float, timestep: float, species_to_track: List[str],
+                             fuel: str, pressure: float=ct.one_atm,
+                             time_limit: float = 300.0) -> Dict[str, Any]:
+    """Run a complete integration experiment with the specified method.
+    
+    Args:
+        method_dict: Dictionary of time of switching and method to use, rtol, atol, table_id
+        gas: Cantera gas object
+        y0: Initial state
+        t0: Start time
+        end_time: End time
+        timestep: Time step size
+        species_to_track: List of species to monitor
+        fuel: Fuel name
+        time_limit: Maximum allowed wall clock time in seconds (default 300s)
+    
+    Returns:
+        results: Dictionary with complete integration results
+    """
+    # Initialize tracking arrays
+    times = [t0]
+    temperatures = [y0[0]]
+    species_profiles = {spec: [y0[gas.species_index(spec) + 1]] for spec in species_to_track}
+    cpu_times = []
+    fuel_mass_fractions = []
+    
+    # Integration loop
+    t = t0
+    y = y0.copy()
+    step_count = 0
+    start_time = time.time()
+    
+    bar = tqdm(total=end_time)
+    while t < end_time:
+        if step_count in method_dict.keys():
+            method, rtol, atol, table_id = method_dict[step_count]
+            print(f"Switching to {method} at step {step_count} with rtol={rtol} and atol={atol} and table_id={table_id}")
+        bar.update(timestep)
+        # Check if time limit exceeded
+        if time.time() - start_time > time_limit:
+            print(f"Time limit of {time_limit}s exceeded after {step_count} steps")
+            break
+            
+        result = integrate_single_step(method, gas, y, t, timestep, rtol, atol, fuel, pressure=pressure, table_id=table_id)
+        
+        if not result['success']:
+            print(f"Step {step_count} failed: {result['message']}")
+            break
+        
+        # Update state
+        y = result['y']
+        t = result['t']
+        cpu_times.append(result['cpu_time'])
+        step_count += 1
+        fuel_mass_fractions.append(result['fuel_mass_fraction'])
+
+        # ensure that y is not empty
+        if len(y) == 0:
+            print(f"Step {step_count} failed: y is empty")
+            print(result)
+            print(y)
+            break
+        
+        # Record data
+        times.append(t)
+        temperatures.append(y[0])
+        for spec in species_to_track:
+            species_profiles[spec].append(y[gas.species_index(spec) + 1])
+        
+        bar.set_postfix({
+            'step': f"{step_count}",
+            'temperature': f"{y[0]:.1f}K",
+            'cpu_time': f"{cpu_times[-1]:.2e}s",
+            'total_cpu_time': f"{np.sum(cpu_times):.2e}s"
+        })
+    bar.close() 
+    total_wall_time = time.time() - start_time
+    return {
+        'method_dict': method_dict,
+        'phi': gas.equivalence_ratio,
+        'times': np.array(times),
+        'fuel_mass_fractions': np.array(fuel_mass_fractions),
+        'temperatures': np.array(temperatures),
+        'species_profiles': species_profiles,
+        'cpu_times': np.array(cpu_times),
+        'total_cpu_time': np.sum(cpu_times),
+        'total_wall_time': total_wall_time,
+        'steps': step_count,
+        'success': step_count > 0,
+        'timed_out': total_wall_time > time_limit
+    }
+
 
 def setup_combustion_chemistry_with_data(mechanism: str,temperature: float, pressure: float, data: np.ndarray) -> ct.Solution:
     """Set up the combustion chemistry with Cantera.

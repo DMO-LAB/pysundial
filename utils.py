@@ -4,6 +4,7 @@ import SundialsPy as SP
 import numpy as np
 import cantera as ct
 import matplotlib.pyplot as plt
+import rk_solver_cpp
 import pandas as pd
 from typing import Tuple, List, Dict, Any, Optional
 import os
@@ -186,6 +187,7 @@ def create_solver(method: str, gas: ct.Solution, y: np.ndarray, t: float,
     if method.startswith('cvode_') or method.startswith('arkode_'):
         return create_sundials_solver(method, y, t, system_size, rtol, abs_tol, gas, pressure, table_id)
     elif method.startswith('cpp_'):
+        #print(f"Creating C++ solver: {method}, t={t}, y={y}, t_end={t_end}, rtol={rtol}, atol={atol}, gas={gas}, pressure={pressure}")
         return create_cpp_solver(method, t, y, t_end, rtol, atol, gas, pressure)
     elif method.startswith('scipy_'):
         return create_scipy_solver(method, t, y, rtol, atol, gas, pressure)

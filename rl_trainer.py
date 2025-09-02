@@ -18,10 +18,10 @@ class IntegratorSwitchingEnv(gym.Env):
     """RL Environment for combustion integrator switching"""
     
     def __init__(self, mechanism_file='h2o2.yaml', 
-                 temp_range=(800, 1200), phi_range=(0.5, 2.0), 
+                 temp_range=(800, 1200), Z_range=(0, 1.0), 
                  time_range=(1e-3, 2e-2), timestep=1e-6, super_steps=100,
                  fuel='H2', oxidizer='O2:0.21, N2:0.79', pressure=ct.one_atm,
-                 small_phi_range=(1e-10, 1e-5), large_phi_range=(10, 1e6),
+                 small_Z_range=(1e-10, 1e-5), large_Z_range=(0.9999, 1.000),
                  pressure_factor_range=(0.1, 10.0)):
         
         super().__init__()
@@ -29,18 +29,19 @@ class IntegratorSwitchingEnv(gym.Env):
         # Simulation parameter ranges
         self.mechanism_file = mechanism_file
         self.temp_range = temp_range
-        self.phi_range = phi_range
+        self.Z_range = Z_range
         self.time_range = time_range
         self.timestep = timestep
         self.super_steps = super_steps
         self.fuel = fuel
         self.oxidizer = oxidizer
         self.pressure = pressure
-        self.small_phi_range = small_phi_range
-        self.large_phi_range = large_phi_range
+        self.small_Z_range = small_Z_range
+        self.large_Z_range = large_Z_range
         self.pressure_factor_range = pressure_factor_range
         # Current episode parameters (will be randomized)
         self.current_temp = None
+        self.current_Z = None
         self.current_phi = None
         self.current_total_time = None
         self.current_n_episodes = None
@@ -72,27 +73,27 @@ class IntegratorSwitchingEnv(gym.Env):
         # State space: temperature + key species (O, H, OH, H2O, O2, H2)
         self.state_species = ['O', 'H', 'OH', 'H2O', 'O2', 'H2']
         self.observation_space = spaces.Box(
-            low=-50, high=50, shape=(7,), dtype=np.float32  # 1 temp + 6 species
+            low=-50, high=50, shape=(8,), dtype=np.float32  # 1 temp + 6 species + 1 Z
         )
         
         self.reset()
     
-    def _setup_chemistry(self, temperature, end_time, phi, pressure_factor):
+    def _setup_chemistry(self, temperature, end_time, Z, pressure_factor):
         """Initialize chemistry with randomized parameters"""
         # Randomize parameters for this episode
         if temperature is None:
             self.current_temp = np.random.uniform(*self.temp_range)
         else:
             self.current_temp = temperature
-        if phi is None:
+        if Z is None:
             if np.random.uniform() < 0.25:
-                self.current_phi = np.random.uniform(*self.small_phi_range)
+                self.current_Z = np.random.uniform(*self.small_Z_range)
             elif np.random.uniform() < 0.5:
-                self.current_phi = np.random.uniform(*self.large_phi_range)
+                self.current_Z = np.random.uniform(*self.large_Z_range)
             else:
-                self.current_phi = np.random.uniform(*self.phi_range)
+                self.current_Z = np.random.uniform(*self.Z_range)
         else:
-            self.current_phi = phi
+            self.current_Z = Z
         if pressure_factor is None:
             if np.random.uniform() < 0.5:
                 self.current_pressure_factor = np.random.uniform(*self.pressure_factor_range)
@@ -109,13 +110,14 @@ class IntegratorSwitchingEnv(gym.Env):
         
         # Setup separate gas objects for reference and RL
         self.gas_ref = ct.Solution(self.mechanism_file)
-        self.gas_ref.set_equivalence_ratio(self.current_phi, self.fuel, self.oxidizer)
+        self.gas_ref.set_mixture_fraction(self.current_Z, self.fuel, self.oxidizer)
         self.gas_ref.TP = self.current_temp, self.pressure * self.current_pressure_factor
+        self.current_phi = self.gas_ref.equivalence_ratio(self.fuel, self.oxidizer)
         
         self.gas_rl = ct.Solution(self.mechanism_file)
-        self.gas_rl.set_equivalence_ratio(self.current_phi, self.fuel, self.oxidizer)
+        self.gas_rl.set_mixture_fraction(self.current_Z, self.fuel, self.oxidizer)
         self.gas_rl.TP = self.current_temp, self.pressure * self.current_pressure_factor
-        
+        self.current_phi = self.gas_rl.equivalence_ratio(self.fuel, self.oxidizer)
         # Get species indices
         self.species_indices = {spec: self.gas_ref.species_index(spec) 
                                for spec in self.state_species}
@@ -166,16 +168,16 @@ class IntegratorSwitchingEnv(gym.Env):
         temp_norm = temp / 2000  # Normalize around initial temp
         species_norm = np.power(np.maximum(obs_species, 1e-20), 0.2)  # 5th root
         
-        return np.hstack([temp_norm, species_norm]).astype(np.float32)
+        return np.hstack([temp_norm, species_norm, self.current_Z]).astype(np.float32)
     
     def reset(self, seed=None, options=None, **kwargs):
         """Reset environment"""
         super().reset(seed=seed)
         temperature = kwargs.get('temperature', None)
         end_time = kwargs.get('end_time', None)
-        phi = kwargs.get('phi', None)
+        Z = kwargs.get('Z', None)
         pressure_factor = kwargs.get('pressure_factor', None)
-        self._setup_chemistry(temperature, end_time, phi, pressure_factor)
+        self._setup_chemistry(temperature, end_time, Z, pressure_factor)
         self.current_episode = 0
         self.current_state = get_initial_state(self.gas_rl)
         self.action_history = []
@@ -213,6 +215,7 @@ class IntegratorSwitchingEnv(gym.Env):
             'success': success, 
             'action': action,
             'temp': self.current_temp,
+            'Z': self.current_Z,
             'phi': self.current_phi,
             'total_time': self.current_total_time,
             'error': info['error'] if info['error'] is not None else 0,
@@ -523,20 +526,20 @@ def plot_trajectory_comparison(trajectory_data, episode_idx=0):
 if __name__ == "__main__":
     mechanism_file='large_mechanism/n-dodecane.yaml'      
     temp_range=(300, 1100)
-    phi_range=(0.1, 2.0)
+    Z_range=(0, 1.0)
     time_range=(1e-3, 5e-2)
     timestep=1e-6
     super_steps=100
     fuel='nc12h26'
     oxidizer='O2:0.21, N2:0.79'
     pressure=ct.one_atm
-    small_phi_range=(1e-10, 1e-5)
-    large_phi_range=(10, 1e6)
+    small_Z_range=(0, 1e-10)
+    large_Z_range=(0.9999, 1.000)
     pressure_factor_range=(0.1, 20.0)
     env = IntegratorSwitchingEnv(mechanism_file=mechanism_file, temp_range=temp_range, 
-                                phi_range=phi_range, time_range=time_range, timestep=timestep, 
+                                Z_range=Z_range, time_range=time_range, timestep=timestep, 
                                 super_steps=super_steps, fuel=fuel, oxidizer=oxidizer, pressure=pressure,
-                                small_phi_range=small_phi_range, large_phi_range=large_phi_range,
+                                small_Z_range=small_Z_range, large_Z_range=large_Z_range,
                                 pressure_factor_range=pressure_factor_range)
         # Train agent
     model, env, callback = train_rl_agent()

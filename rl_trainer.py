@@ -280,7 +280,7 @@ class IntegratorSwitchingEnv(gym.Env):
             # CPU time reward: great incentive below threshold
             if cpu_time <= cpu_time_threshold:
                 # Below threshold: large positive reward
-                efficiency_reward = 15.0 * (1.0 - cpu_time / cpu_time_threshold)
+                efficiency_reward = 20.0 * (1.0 - cpu_time / cpu_time_threshold)
                 #print(f"efficiency_reward: {efficiency_reward} - cpu_time: {cpu_time} - cpu_time_threshold: {cpu_time_threshold}")
             elif cpu_time <= cpu_time_target:
                 # Between threshold and target: moderate reward
@@ -304,7 +304,7 @@ class IntegratorSwitchingEnv(gym.Env):
         except Exception as e:
             #print(f"Integration failed: {e}")
             print(f"Integration failed")
-            return -50.0, False, {"error": None, "cpu_time": None, "accuracy_reward": None, "efficiency_reward": None}
+            return -100.0, False, {"error": None, "cpu_time": None, "accuracy_reward": None, "efficiency_reward": None}
     
     def _calculate_error(self, state, ref_state):
         """Calculate normalized error between transformed states"""
@@ -385,7 +385,17 @@ class TrainingCallback(BaseCallback):
         self.episode_actions = []
         self.episode_action_distribution = {}
         self.current_episode_reward = 0
-        self.episode_success_count = [] 
+        self.episode_success_count = []
+        
+        # Store running averages
+        self.running_avg_rewards = []
+        self.running_avg_cpu_times = []
+        self.running_avg_errors = []
+        self.running_avg_success_counts = []
+        
+        # Store action distribution over time
+        self.episode_action_distributions = []
+        self.episode_numbers = [] 
         
     def _on_step(self) -> bool:
         # Get the current reward
@@ -404,16 +414,26 @@ class TrainingCallback(BaseCallback):
             action = info['action']
             self.episode_action_distribution[action] = self.episode_action_distribution.get(action, 0) + 1
         
-        if 'success' in info and info['success']:
-            self.episode_success_count.append(1)
-        else:
-            self.episode_success_count.append(0)
-        
         # Check if episode is done
         if self.locals.get('dones', [False])[0]:
+            if 'success' in info and info['success']:
+                self.episode_success_count.append(1)
+            else:
+                self.episode_success_count.append(0)
             self.episode_rewards.append(self.current_episode_reward)
             self.episode_cpu_times.append(info.get('episode_cpu_times', 0))
             self.episode_errors.append(info.get('episode_errors', 0))
+            
+            # Store running averages
+            self.running_avg_rewards.append(np.mean(self.episode_rewards))
+            self.running_avg_cpu_times.append(np.mean(self.episode_cpu_times))
+            self.running_avg_errors.append(np.mean(self.episode_errors))
+            self.running_avg_success_counts.append(np.mean(self.episode_success_count))
+            
+            # Store action distribution for this episode
+            self.episode_action_distributions.append(self.episode_action_distribution.copy())
+            self.episode_numbers.append(len(self.episode_rewards))
+            
             self.current_episode_reward = 0  # Reset for next episode
             
             if len(self.episode_rewards) % 10 == 0:
@@ -438,7 +458,7 @@ def train_rl_agent():
     model = PPO("MlpPolicy", env, verbose=1, learning_rate=3e-4, 
                 n_steps=2048, batch_size=64, n_epochs=10)
     
-    model.learn(total_timesteps=50000, callback=callback)
+    model.learn(total_timesteps=500000, callback=callback)
     
     print("Training complete!")
     return model, env, callback
@@ -453,6 +473,7 @@ def evaluate_agent(model, env, n_episodes=5):
     
     for episode in range(n_episodes):
         obs, _ = env.reset()
+        print(f'Running episode {episode + 1} with temperature {env.current_temp}K, Z {env.current_Z}, phi {env.current_phi} - pressure = {env.pressure * env.current_pressure_factor} Pa')
         episode_reward = 0
         actions_taken = []
         
@@ -461,8 +482,8 @@ def evaluate_agent(model, env, n_episodes=5):
             obs, reward, terminated, truncated, info = env.step(action)
             
             episode_reward += reward
-            actions_taken.append(action)
-            action_counts[action] += 1
+            actions_taken.append(int(action))
+            action_counts[int(action)] += 1
             
             if terminated or truncated:
                 break
@@ -475,12 +496,97 @@ def evaluate_agent(model, env, n_episodes=5):
             
         print(f"Episode {episode + 1}: Reward = {episode_reward:.2f}, "
               f"T={trajectory_data['conditions']['temperature']:.0f}K, "
-              f"φ={trajectory_data['conditions']['phi']:.2f}, Actions = {actions_taken}")
+              f"φ={trajectory_data['conditions']['phi']:.2f}, Actions = {actions_taken}\n\n")
     
     print(f"\nAverage reward: {np.mean(episode_rewards):.2f}")
-    print(f"Action distribution: {action_counts / np.sum(action_counts)}")
+    print(f"Action distribution: {env.action_distribution}\n\n")
     
     return episode_rewards, action_counts, trajectories
+
+def plot_training_metrics(callback, save_path=None):
+    """Plot comprehensive training metrics"""
+    if not callback.episode_rewards:
+        print("No training data available")
+        return
+    
+    fig, axes = plt.subplots(3, 2, figsize=(15, 12))
+    fig.suptitle('Training Progress - All Metrics', fontsize=16)
+    
+    
+    # 1. Episode Rewards (raw and running average)
+    axes[0, 0].plot(np.arange(len(callback.episode_rewards)), callback.episode_rewards, 'b-', alpha=0.3, label='Raw Rewards')
+    axes[0, 0].plot(np.arange(len(callback.running_avg_rewards)), callback.running_avg_rewards, 'r-', linewidth=2, label='Running Average')
+    axes[0, 0].set_xlabel('Episode')
+    axes[0, 0].set_ylabel('Reward')
+    axes[0, 0].set_title('Episode Rewards')
+    axes[0, 0].legend()
+    axes[0, 0].grid(True)
+    
+    # 2. CPU Times (raw and running average)
+    axes[0, 1].plot(np.arange(len(callback.episode_cpu_times)), callback.episode_cpu_times, 'b-', alpha=0.3, label='Raw CPU Times')
+    axes[0, 1].plot(np.arange(len(callback.running_avg_cpu_times)), callback.running_avg_cpu_times, 'r-', linewidth=2, label='Running Average')
+    axes[0, 1].set_xlabel('Episode')
+    axes[0, 1].set_ylabel('CPU Time (s)')
+    axes[0, 1].set_title('Episode CPU Times')
+    axes[0, 1].legend()
+    axes[0, 1].grid(True)
+    
+    # 3. Errors (raw and running average)
+    axes[1, 0].semilogy(np.arange(len(callback.episode_errors)), callback.episode_errors, 'b-', alpha=0.3, label='Raw Errors')
+    axes[1, 0].semilogy(np.arange(len(callback.running_avg_errors)), callback.running_avg_errors, 'r-', linewidth=2, label='Running Average')
+    axes[1, 0].set_xlabel('Episode')
+    axes[1, 0].set_ylabel('Error (log scale)')
+    axes[1, 0].set_title('Episode Errors')
+    axes[1, 0].legend()
+    axes[1, 0].grid(True)
+    
+    # 4. Success Count (raw and running average)
+    axes[1, 1].plot(np.arange(len(callback.episode_success_count)), callback.episode_success_count, 'b-', alpha=0.3, label='Raw Success Count')
+    axes[1, 1].plot(np.arange(len(callback.running_avg_success_counts)), callback.running_avg_success_counts, 'r-', linewidth=2, label='Running Average')
+    axes[1, 1].set_xlabel('Episode')
+    axes[1, 1].set_ylabel('Success Count')
+    axes[1, 1].set_title('Episode Success Count')
+    axes[1, 1].legend()
+    axes[1, 1].grid(True)
+    
+    # 5. Action Distribution over time
+    if callback.episode_action_distributions:
+        # Get all unique actions
+        all_actions = set()
+        for dist in callback.episode_action_distributions:
+            all_actions.update(dist.keys())
+        all_actions = sorted(list(all_actions))
+        
+        # Plot action distribution over time
+        for action in all_actions:
+            action_counts = []
+            for dist in callback.episode_action_distributions:
+                action_counts.append(dist.get(action, 0))
+            axes[2, 0].plot(np.arange(len(callback.episode_numbers)), action_counts, label=f'Action {action}', marker='o', markersize=3)
+        
+        axes[2, 0].set_xlabel('Episode')
+        axes[2, 0].set_ylabel('Action Count')
+        axes[2, 0].set_title('Action Distribution Over Time')
+        axes[2, 0].legend()
+        axes[2, 0].grid(True)
+    
+    # 6. Final Action Distribution (pie chart)
+    if callback.episode_action_distribution:
+        actions = list(callback.episode_action_distribution.keys())
+        counts = list(callback.episode_action_distribution.values())
+        axes[2, 1].pie(counts, labels=[f'Action {a}' for a in actions], autopct='%1.1f%%', startangle=90)
+        axes[2, 1].set_title('Final Action Distribution')
+    else:
+        axes[2, 1].text(0.5, 0.5, 'No action data', ha='center', va='center', transform=axes[2, 1].transAxes)
+        axes[2, 1].set_title('Final Action Distribution')
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=200, bbox_inches='tight')
+        print(f"Training metrics plot saved to: {save_path}")
+    
+    plt.show()
 
 def plot_trajectory_comparison(trajectory_data, episode_idx=0):
     """Plot comparison between RL and reference trajectories"""
@@ -547,15 +653,8 @@ if __name__ == "__main__":
     # save the model
     model.save(f'integrator_switching_ppo_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
     print("Model saved!")
-    # Plot training progress
-    plt.figure(figsize=(10, 5), dpi=200)
-    plt.plot(callback.episode_rewards)
-    plt.title('Training Progress')
-    plt.xlabel('Episode')
-    plt.ylabel('Total Reward')
-    plt.grid(True)
-    plt.savefig(f'training_progress_{datetime.now().strftime("%Y%m%d_%H%M%S")}.png')
-    plt.show()
+    # Plot comprehensive training metrics
+    plot_training_metrics(callback, save_path=f'training_metrics_{datetime.now().strftime("%Y%m%d_%H%M%S")}.png')
     
     # Evaluate agent and collect trajectories
     episode_rewards, action_distribution, trajectories = evaluate_agent(model, env)

@@ -72,18 +72,21 @@ def create_sundials_solver(method: str, y: np.ndarray, t: float, system_size: in
         solver: Initialized SUNDIALS solver
     """
     if method == 'cvode_bdf':
+        print(f"Creating cvode_bdf solver")
         solver = SP.cvode.CVodeSolver(
             system_size=system_size,
             rhs_fn=lambda t, y: combustion_rhs(t, y, gas, pressure),
             iter_type=SP.cvode.IterationType.NEWTON
         )
     elif method == 'cvode_adams':
+        print(f"Creating cvode_adams solver")
         solver = SP.cvode.CVodeSolver(
             system_size=system_size,
             rhs_fn=lambda t, y: combustion_rhs(t, y, gas, pressure),
             iter_type=SP.cvode.IterationType.FUNCTIONAL
         )
     elif method == 'arkode_erk':
+        print(f"Creating arkode_erk solver, table_id={table_id}")
         solver = SP.arkode.ARKodeSolver(
             system_size=system_size,
             explicit_fn=lambda t, y: combustion_rhs(t, y, gas, pressure),
@@ -91,6 +94,7 @@ def create_sundials_solver(method: str, y: np.ndarray, t: float, system_size: in
             butcher_table=SP.arkode.ButcherTable.ARK548L2SA_ERK_8_4_5 if table_id is None else table_id
         )
     elif method == 'arkode_dirk':
+        print(f"Creating arkode_dirk solver, table_id={table_id}")
         solver = SP.arkode.ARKodeSolver(
             system_size=system_size,
             explicit_fn=lambda t, y: combustion_rhs(t, y, gas, pressure),
@@ -124,6 +128,7 @@ def create_cpp_solver(method: str, t: float, y: np.ndarray, t_end: float,
         solver: Initialized C++ solver
     """
     if method == 'cpp_rk23':
+        print(f"Creating cpp_rk23 solver")
         return rk_solver_cpp.RK23(
             lambda t, y: combustion_rhs(t, y, gas, pressure), 
             float(t), np.array(y), float(t_end), rtol=rtol, atol=atol
@@ -152,6 +157,7 @@ def create_scipy_solver(method: str, t: float, y: np.ndarray, rtol: float, atol:
         raise ValueError(f"Invalid SciPy method format: {method}")
     
     solver_type, method_name = method_parts[1], method_parts[2]
+    print(f"Creating scipy_{solver_type}_{method_name} solver")
     solver = ode(lambda t, y: combustion_rhs(t, y, gas, pressure)).set_integrator(
         solver_type, method=method_name, rtol=rtol, atol=atol, nsteps=10000
     )

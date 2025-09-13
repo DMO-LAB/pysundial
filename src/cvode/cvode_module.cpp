@@ -47,13 +47,16 @@ private:
 
     SUNNonlinearSolver NLS_;
 
+    int mxsteps_;
+
 public:
     // Constructor
 CVodeSolver(int system_size, 
         PyRhsFn rhs_fn,
         IterationType iter_type = IterationType::NEWTON,
         LinearSolverType linsol_type = LinearSolverType::DENSE,
-        bool use_bdf = true)  // Add parameter to choose BDF vs Adams
+        bool use_bdf = true,
+        int mxsteps = 1000)  // Add parameter to choose BDF vs Adams
     : N_(system_size), 
     t0_(0.0), 
     using_newton_iteration_(iter_type == IterationType::NEWTON),
@@ -62,7 +65,8 @@ CVodeSolver(int system_size,
     LS_(nullptr),
     y_(nullptr),
     y_owner_(false),
-    NLS_(nullptr) {
+    NLS_(nullptr),
+    mxsteps_(mxsteps) {
     // std::cout << "[DEBUG] CVodeSolver constructor start. system_size=" << system_size << ", iter_type=" << (using_newton_iteration_ ? "NEWTON" : "FUNCTIONAL") << ", use_bdf=" << use_bdf << std::endl;
 
     // Ensure context is initialized
@@ -132,6 +136,9 @@ CVodeSolver(int system_size,
     }
     flag = CVodeSetNonlinearSolver(cvode_mem_, NLS_);
     check_flag(&flag, "CVodeSetNonlinearSolver", 1);
+
+    flag = CVodeSetMaxNumSteps(cvode_mem_, mxsteps_);
+    check_flag(&flag, "CVodeSetMaxNumSteps", 1);
 
     // Set maximum number of nonlinear iterations
     flag = CVodeSetMaxNonlinIters(cvode_mem_, 25);
@@ -246,6 +253,30 @@ CVodeSolver(int system_size,
         // std::cout << "[DEBUG] initialize() end." << std::endl;
     }
     
+    void setState(const std::vector<realtype>& y_new, double t_new = 0.0) {
+        if (y_ == nullptr) {
+            throw std::runtime_error("Solver not initialized. Call initialize() first.");
+        }
+        
+        if (y_new.size() != static_cast<size_t>(N_)) {
+            throw std::runtime_error("State vector length doesn't match system size");
+        }
+        
+        // Update internal time
+        t0_ = t_new;
+        
+        // Update state vector
+        realtype* y_data = N_VGetArrayPointer_Serial(y_);
+        for (int i = 0; i < N_; ++i) {
+            y_data[i] = y_new[i];
+        }
+        
+        // Reset CVODE's internal state
+        int flag = CVodeReInit(cvode_mem_, t0_, y_);
+        check_flag(&flag, "CVodeReInit in setState", 1);
+    }
+    
+
     // Set the Jacobian function
     void set_jacobian(PyJacFn jac_fn) {
         if (A_ == nullptr || LS_ == nullptr) {
@@ -410,12 +441,13 @@ void init_cvode_module(py::module_ &m) {
     
     // Register CVodeSolver class with updated constructor
     py::class_<CVodeSolver>(m, "CVodeSolver")
-        .def(py::init<int, PyRhsFn, IterationType, LinearSolverType, bool>(),
+        .def(py::init<int, PyRhsFn, IterationType, LinearSolverType, bool, int>(),
              py::arg("system_size"),
              py::arg("rhs_fn"),
              py::arg("iter_type") = IterationType::NEWTON,
              py::arg("linsol_type") = LinearSolverType::DENSE,
              py::arg("use_bdf") = true,  // Add this parameter
+             py::arg("mxsteps") = 1000,
              "Create a CVODE solver for an ODE system")
         .def("initialize", &CVodeSolver::initialize,
              py::arg("y0"),
@@ -423,6 +455,10 @@ void init_cvode_module(py::module_ &m) {
              py::arg("rel_tol") = 1.0e-6,
              py::arg("abs_tol") = py::array_t<realtype>(),
              "Initialize the solver with initial conditions")
+        .def("set_state", &CVodeSolver::setState,
+             py::arg("y_new"),
+             py::arg("t_new") = 0.0,
+             "Set the state of the solver")
         .def("set_jacobian", &CVodeSolver::set_jacobian,
              py::arg("jac_fn"),
              "Set the Jacobian function for implicit solves")

@@ -186,73 +186,183 @@ CVodeSolver(int system_size,
     }
     
     // Initialize the solver with initial conditions
-    void initialize(py::array_t<realtype> y0, double t0 = 0.0, 
-               double rel_tol = 1.0e-6, py::array_t<realtype> abs_tol = py::array_t<realtype>()) {
-        // std::cout << "[DEBUG] initialize() start." << std::endl;
-        // Set initial time
-        t0_ = t0;
+    // void initialize(py::array_t<realtype> y0, double t0 = 0.0, 
+    //            double rel_tol = 1.0e-6, py::array_t<realtype> abs_tol = py::array_t<realtype>()) {
+    //     // std::cout << "[DEBUG] initialize() start." << std::endl;
+    //     // Set initial time
+    //     t0_ = t0;
         
-        try {
-            // Create and fill N_Vector for initial conditions
-            N_Vector y_tmp = numpy_to_nvector(y0);
+    //     try {
+    //         // Create and fill N_Vector for initial conditions
+    //         N_Vector y_tmp = numpy_to_nvector(y0);
             
-            // Check vector length
-            if (N_VGetLength_Serial(y_tmp) != N_) {
-                N_VDestroy_Serial(y_tmp);
-                throw std::runtime_error("Initial condition vector length doesn't match system size");
-            }
+    //         // Check vector length
+    //         if (N_VGetLength_Serial(y_tmp) != N_) {
+    //             N_VDestroy_Serial(y_tmp);
+    //             throw std::runtime_error("Initial condition vector length doesn't match system size");
+    //         }
             
-            // Clone the vector to keep a copy
-            if (y_ != nullptr && y_owner_) {
-                N_VDestroy_Serial(y_);
-            }
+    //         // Clone the vector to keep a copy
+    //         if (y_ != nullptr && y_owner_) {
+    //             N_VDestroy_Serial(y_);
+    //         }
             
-            y_ = N_VClone(y_tmp);
-            if (y_ == nullptr) {
-                N_VDestroy_Serial(y_tmp);
-                throw std::runtime_error("Failed to clone y vector");
-            }
+    //         y_ = N_VClone(y_tmp);
+    //         if (y_ == nullptr) {
+    //             N_VDestroy_Serial(y_tmp);
+    //             throw std::runtime_error("Failed to clone y vector");
+    //         }
             
-            // Copy data from temporary vector to y_
-            realtype* dest = N_VGetArrayPointer_Serial(y_);
-            realtype* src = N_VGetArrayPointer_Serial(y_tmp);
+    //         // Copy data from temporary vector to y_
+    //         realtype* dest = N_VGetArrayPointer_Serial(y_);
+    //         realtype* src = N_VGetArrayPointer_Serial(y_tmp);
             
-            for (int i = 0; i < N_; ++i) {
-                dest[i] = src[i];
-            }
+    //         for (int i = 0; i < N_; ++i) {
+    //             dest[i] = src[i];
+    //         }
             
-            N_VDestroy_Serial(y_tmp);  // Clean up temporary
-            y_owner_ = true;
+    //         N_VDestroy_Serial(y_tmp);  // Clean up temporary
+    //         y_owner_ = true;
             
-            int flag;
+    //         int flag;
             
-            // Reinitialize the solver
-            flag = CVodeReInit(cvode_mem_, t0_, y_);
-            check_flag(&flag, "CVodeReInit", 1);
+    //         // Reinitialize the solver
+    //         flag = CVodeReInit(cvode_mem_, t0_, y_);
+    //         check_flag(&flag, "CVodeReInit", 1);
             
-            // Set tolerances
-            if (abs_tol.size() > 0) {
-                // Vector absolute tolerance
-                N_Vector atol_vec = numpy_to_nvector(abs_tol);
-                flag = CVodeSVtolerances(cvode_mem_, rel_tol, atol_vec);
-                check_flag(&flag, "CVodeSVtolerances", 1);
-                N_VDestroy_Serial(atol_vec);
-            } else {
-                // Scalar absolute tolerance
-                flag = CVodeSStolerances(cvode_mem_, rel_tol, rel_tol * 1.0e-3);
-                check_flag(&flag, "CVodeSStolerances", 1);
-            }
+    //         // Set tolerances
+    //         if (abs_tol.size() > 0) {
+    //             // Vector absolute tolerance
+    //             N_Vector atol_vec = numpy_to_nvector(abs_tol);
+    //             flag = CVodeSVtolerances(cvode_mem_, rel_tol, atol_vec);
+    //             check_flag(&flag, "CVodeSVtolerances", 1);
+    //             N_VDestroy_Serial(atol_vec);
+    //         } else {
+    //             // Scalar absolute tolerance
+    //             flag = CVodeSStolerances(cvode_mem_, rel_tol, rel_tol * 1.0e-3);
+    //             check_flag(&flag, "CVodeSStolerances", 1);
+    //         }
             
-            // Make sure user data is properly set
-            flag = CVodeSetUserData(cvode_mem_, user_data_);
-            check_flag(&flag, "CVodeSetUserData in initialize", 1);
+    //         // Make sure user data is properly set
+    //         flag = CVodeSetUserData(cvode_mem_, user_data_);
+    //         check_flag(&flag, "CVodeSetUserData in initialize", 1);
             
-        } catch (const std::exception& e) {
-            throw std::runtime_error(std::string("Error initializing solver: ") + e.what());
-        }
-        // std::cout << "[DEBUG] initialize() end." << std::endl;
+    //     } catch (const std::exception& e) {
+    //         throw std::runtime_error(std::string("Error initializing solver: ") + e.what());
+    //     }
+    //     // std::cout << "[DEBUG] initialize() end." << std::endl;
+    // }
+    // Initialize the solver with initial conditions
+    void initialize(py::array_t<realtype> y0, double t0 = 0.0, 
+        double rel_tol = 1.0e-6, py::array_t<realtype> abs_tol = py::array_t<realtype>()) {
+
+    // Set initial time
+    t0_ = t0;
+
+    try {
+    // Create and fill N_Vector for initial conditions
+    N_Vector y_tmp = numpy_to_nvector(y0);
+    
+    // Check vector length
+    if (N_VGetLength_Serial(y_tmp) != N_) {
+        N_VDestroy_Serial(y_tmp);
+        throw std::runtime_error("Initial condition vector length doesn't match system size");
     }
     
+    // Clone the vector to keep a copy
+    if (y_ != nullptr && y_owner_) {
+        N_VDestroy_Serial(y_);
+    }
+    
+    y_ = N_VClone(y_tmp);
+    if (y_ == nullptr) {
+        N_VDestroy_Serial(y_tmp);
+        throw std::runtime_error("Failed to clone y vector");
+    }
+    
+    // Copy data from temporary vector to y_
+    realtype* dest = N_VGetArrayPointer_Serial(y_);
+    realtype* src = N_VGetArrayPointer_Serial(y_tmp);
+    
+    for (int i = 0; i < N_; ++i) {
+        dest[i] = src[i];
+    }
+    
+    N_VDestroy_Serial(y_tmp);  // Clean up temporary
+    y_owner_ = true;
+    
+    int flag;
+    
+    // Reinitialize the solver
+    flag = CVodeReInit(cvode_mem_, t0_, y_);
+    check_flag(&flag, "CVodeReInit", 1);
+    
+    // Set tolerances
+    if (abs_tol.size() > 0) {
+        // Vector absolute tolerance
+        N_Vector atol_vec = numpy_to_nvector(abs_tol);
+        flag = CVodeSVtolerances(cvode_mem_, rel_tol, atol_vec);
+        check_flag(&flag, "CVodeSVtolerances", 1);
+        N_VDestroy_Serial(atol_vec);
+    } else {
+        // Scalar absolute tolerance - use a more reasonable default
+        realtype scalar_atol = rel_tol * 1.0e-6;  // Better default than 1e-3
+        flag = CVodeSStolerances(cvode_mem_, rel_tol, scalar_atol);
+        check_flag(&flag, "CVodeSStolerances", 1);
+    }
+    
+    // IMPORTANT: Set maximum number of steps (this was missing!)
+    flag = CVodeSetMaxNumSteps(cvode_mem_, mxsteps_);
+    check_flag(&flag, "CVodeSetMaxNumSteps", 1);
+    
+    // Set maximum step size if needed for stiff problems
+    // flag = CVodeSetMaxStep(cvode_mem_, 1.0e-3);  // Uncomment if needed
+    // check_flag(&flag, "CVodeSetMaxStep", 1);
+    
+    // Set minimum step size if needed
+    flag = CVodeSetMinStep(cvode_mem_, 1.0e-16);  // Uncomment if needed
+    check_flag(&flag, "CVodeSetMinStep", 1);
+    
+    // For stiff problems, you might want to set initial step size
+    flag = CVodeSetInitStep(cvode_mem_, 1.0e-12);  // Very small initial step
+    check_flag(&flag, "CVodeSetInitStep", 1);
+    
+    // Set stability limit detection (can help with stiff problems)
+    flag = CVodeSetStabLimDet(cvode_mem_, SUNTRUE);
+    check_flag(&flag, "CVodeSetStabLimDet", 1);
+    
+    // For Newton iteration, set additional parameters
+    if (using_newton_iteration_) {
+        // Set maximum number of nonlinear iterations
+        flag = CVodeSetMaxNonlinIters(cvode_mem_, 10);  // Increased from default 3
+        check_flag(&flag, "CVodeSetMaxNonlinIters", 1);
+        
+        // Set maximum number of convergence failures
+        flag = CVodeSetMaxConvFails(cvode_mem_, 20);  // Increased from default 10
+        check_flag(&flag, "CVodeSetMaxConvFails", 1);
+        
+        // Set nonlinear convergence coefficient
+        flag = CVodeSetNonlinConvCoef(cvode_mem_, 0.1);  // Default is 0.1
+        check_flag(&flag, "CVodeSetNonlinConvCoef", 1);
+    } else {
+        // For functional iteration, set maximum number of iterations
+        flag = CVodeSetMaxNonlinIters(cvode_mem_, 25);  // Higher for functional
+        check_flag(&flag, "CVodeSetMaxNonlinIters", 1);
+    }
+    
+    // Make sure user data is properly set
+    flag = CVodeSetUserData(cvode_mem_, user_data_);
+    check_flag(&flag, "CVodeSetUserData in initialize", 1);
+    
+    // // Optional: Set error handler for better debugging
+    // flag = CVodeSetErrHandlerFn(cvode_mem_, NULL, NULL);  // Use default error handler
+    // check_flag(&flag, "CVodeSetErrHandlerFn", 1);
+    
+    } catch (const std::exception& e) {
+    throw std::runtime_error(std::string("Error initializing solver: ") + e.what());
+    }
+    }
+
     void setState(const std::vector<realtype>& y_new, double t_new = 0.0) {
         if (y_ == nullptr) {
             throw std::runtime_error("Solver not initialized. Call initialize() first.");

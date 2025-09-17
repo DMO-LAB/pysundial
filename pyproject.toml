@@ -15,7 +15,7 @@ version = "0.1.0"
 description = "Python bindings for SUNDIALS solvers"
 readme = "README.md"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Eloghosa", email = "eloghosaefficiency@gmail.com"}
 ]
 license = {text = "MIT"}
 requires-python = ">=3.7"
@@ -40,9 +40,9 @@ test = ["pytest", "pytest-cov"]
 dev = ["pytest", "pytest-cov", "black", "flake8"]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/pysundial"
-Repository = "https://github.com/yourusername/pysundial"
-Issues = "https://github.com/yourusername/pysundial/issues"
+Homepage = "https://github.com/DMO-LAB/pysundial"
+Repository = "https://github.com/DMO-LAB/pysundial/
+Issues = "https://github.com/DMO-LAB/pysundial/issues"
 
 [tool.setuptools]
 packages = ["sundials_py"]

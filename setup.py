@@ -70,8 +70,8 @@ class CMakeBuild(build_ext):
 setup(
     name='sundials_py',
     version='0.1.0',
-    author='Your Name',  # Fill this in
-    author_email='your.email@example.com', # Fill this in
+    author='Eloghosa',  # Fill this in
+    author_email='eloghosaefficiency@gmail.com', # Fill this in
     description='Python bindings for SUNDIALS', # Fill this in
     # long_description=open('README.md').read(), # Optional: Uncomment if you have a README
     # long_description_content_type='text/markdown', # Optional

@@ -59,7 +59,7 @@ Once SUNDIALS is installed, you can install PySundial:
 
 ### From Source (Development)
 ```bash
-git clone https://github.com/yourusername/pysundial.git
+git clone https://github.com/DMO-LAB/pysundial.git
 cd pysundial
 pip install -e .
 ```
@@ -165,7 +165,7 @@ CMAKE_VERBOSE_MAKEFILE=ON pip install -e .
 ### Setting up Development Environment
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/pysundial.git
+git clone https://github.com/DMO-LAB/pysundial.git
 cd pysundial
 
 # Create and activate virtual environment
@@ -222,9 +222,9 @@ If you use PySundial in your research, please cite:
 ```bibtex
 @software{pysundial,
   title={PySundial: Python Bindings for SUNDIALS},
-  author={Your Name},
+  author={Eloghosa Ikponmwoba},
   year={2023},
-  url={https://github.com/yourusername/pysundial}
+  url={https://github.com/DMO-LAB/pysundial}
 }
 ```
 

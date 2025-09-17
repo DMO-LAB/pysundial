@@ -34,10 +34,8 @@ private:
     // Solver type
     bool using_newton_iteration_;
     
-    // Callback data containers
-    PyRhsFnData* rhs_data_;
-    PyJacFnData* jac_data_;
-    PyRootFnData* root_data_;
+    // Unified callback/user data container (single pointer passed to CVODE)
+    CvodeUserData* user_data_;
     
     // Linear solver and matrix
     SUNMatrix A_;
@@ -49,25 +47,27 @@ private:
 
     SUNNonlinearSolver NLS_;
 
+    int mxsteps_;
+
 public:
     // Constructor
 CVodeSolver(int system_size, 
         PyRhsFn rhs_fn,
         IterationType iter_type = IterationType::NEWTON,
         LinearSolverType linsol_type = LinearSolverType::DENSE,
-        bool use_bdf = true)  // Add parameter to choose BDF vs Adams
+        bool use_bdf = true,
+        int mxsteps = 1000)  // Add parameter to choose BDF vs Adams
     : N_(system_size), 
     t0_(0.0), 
     using_newton_iteration_(iter_type == IterationType::NEWTON),
-    rhs_data_(new PyRhsFnData{rhs_fn}),
-    jac_data_(nullptr),
-    root_data_(nullptr),
+    user_data_(nullptr),
     A_(nullptr),
     LS_(nullptr),
     y_(nullptr),
     y_owner_(false),
-    NLS_(nullptr) {
-    std::cout << "[DEBUG] CVodeSolver constructor start. system_size=" << system_size << ", iter_type=" << (using_newton_iteration_ ? "NEWTON" : "FUNCTIONAL") << ", use_bdf=" << use_bdf << std::endl;
+    NLS_(nullptr),
+    mxsteps_(mxsteps) {
+    // std::cout << "[DEBUG] CVodeSolver constructor start. system_size=" << system_size << ", iter_type=" << (using_newton_iteration_ ? "NEWTON" : "FUNCTIONAL") << ", use_bdf=" << use_bdf << std::endl;
 
     // Ensure context is initialized
     if (sunctx == nullptr) {
@@ -99,8 +99,14 @@ CVodeSolver(int system_size,
     throw std::runtime_error("Failed to initialize CVODE");
     }
 
-    // Set user data for RHS
-    flag = CVodeSetUserData(cvode_mem_, rhs_data_);
+    // Create unified user data and set once
+    user_data_ = new CvodeUserData();
+    user_data_->py_rhs_fn = rhs_fn;
+    user_data_->has_jacobian = false;
+    user_data_->has_root = false;
+    user_data_->nrtfn = 0;
+    user_data_->N = N_;
+    flag = CVodeSetUserData(cvode_mem_, user_data_);
     check_flag(&flag, "CVodeSetUserData", 1);
 
     // Set up linear solver based on iteration type
@@ -131,6 +137,9 @@ CVodeSolver(int system_size,
     flag = CVodeSetNonlinearSolver(cvode_mem_, NLS_);
     check_flag(&flag, "CVodeSetNonlinearSolver", 1);
 
+    flag = CVodeSetMaxNumSteps(cvode_mem_, mxsteps_);
+    check_flag(&flag, "CVodeSetMaxNumSteps", 1);
+
     // Set maximum number of nonlinear iterations
     flag = CVodeSetMaxNonlinIters(cvode_mem_, 25);
     check_flag(&flag, "CVodeSetMaxNonlinIters", 1);
@@ -144,13 +153,13 @@ CVodeSolver(int system_size,
     }
 
     N_VDestroy_Serial(y0_dummy);  // cleanup dummy vector
-    std::cout << "[DEBUG] CVodeSolver constructor end." << std::endl;
+    //std::cout << "[DEBUG] CVodeSolver constructor end." << std::endl;
     }
 
     
     // Destructor
     ~CVodeSolver() {
-        std::cout << "[DEBUG] CVodeSolver destructor start." << std::endl;
+        // std::cout << "[DEBUG] CVodeSolver destructor start." << std::endl;
         // Free memory in reverse order of allocation
         if (y_owner_ && y_ != nullptr) {
             N_VDestroy_Serial(y_);
@@ -172,80 +181,145 @@ CVodeSolver(int system_size,
             CVodeFree(&cvode_mem_);
         }
         
-        delete rhs_data_;
-        delete jac_data_;
-        delete root_data_;
-        std::cout << "[DEBUG] CVodeSolver destructor end." << std::endl;
+    delete user_data_;
+        // std::cout << "[DEBUG] CVodeSolver destructor end." << std::endl;
     }
     
     // Initialize the solver with initial conditions
     void initialize(py::array_t<realtype> y0, double t0 = 0.0, 
-               double rel_tol = 1.0e-6, py::array_t<realtype> abs_tol = py::array_t<realtype>()) {
-        std::cout << "[DEBUG] initialize() start." << std::endl;
-        // Set initial time
-        t0_ = t0;
-        
-        try {
-            // Create and fill N_Vector for initial conditions
-            N_Vector y_tmp = numpy_to_nvector(y0);
-            
-            // Check vector length
-            if (N_VGetLength_Serial(y_tmp) != N_) {
-                N_VDestroy_Serial(y_tmp);
-                throw std::runtime_error("Initial condition vector length doesn't match system size");
-            }
-            
-            // Clone the vector to keep a copy
-            if (y_ != nullptr && y_owner_) {
-                N_VDestroy_Serial(y_);
-            }
-            
-            y_ = N_VClone(y_tmp);
-            if (y_ == nullptr) {
-                N_VDestroy_Serial(y_tmp);
-                throw std::runtime_error("Failed to clone y vector");
-            }
-            
-            // Copy data from temporary vector to y_
-            realtype* dest = N_VGetArrayPointer_Serial(y_);
-            realtype* src = N_VGetArrayPointer_Serial(y_tmp);
-            
-            for (int i = 0; i < N_; ++i) {
-                dest[i] = src[i];
-            }
-            
-            N_VDestroy_Serial(y_tmp);  // Clean up temporary
-            y_owner_ = true;
-            
-            int flag;
-            
-            // Reinitialize the solver
-            flag = CVodeReInit(cvode_mem_, t0_, y_);
-            check_flag(&flag, "CVodeReInit", 1);
-            
-            // Set tolerances
-            if (abs_tol.size() > 0) {
-                // Vector absolute tolerance
-                N_Vector atol_vec = numpy_to_nvector(abs_tol);
-                flag = CVodeSVtolerances(cvode_mem_, rel_tol, atol_vec);
-                check_flag(&flag, "CVodeSVtolerances", 1);
-                N_VDestroy_Serial(atol_vec);
-            } else {
-                // Scalar absolute tolerance
-                flag = CVodeSStolerances(cvode_mem_, rel_tol, rel_tol * 1.0e-3);
-                check_flag(&flag, "CVodeSStolerances", 1);
-            }
-            
-            // Make sure user data is properly set
-            flag = CVodeSetUserData(cvode_mem_, rhs_data_);
-            check_flag(&flag, "CVodeSetUserData in initialize", 1);
-            
-        } catch (const std::exception& e) {
-            throw std::runtime_error(std::string("Error initializing solver: ") + e.what());
-        }
-        std::cout << "[DEBUG] initialize() end." << std::endl;
+        double rel_tol = 1.0e-6, py::array_t<realtype> abs_tol = py::array_t<realtype>()) {
+
+    // Set initial time
+    t0_ = t0;
+
+    try {
+    // Create and fill N_Vector for initial conditions
+    N_Vector y_tmp = numpy_to_nvector(y0);
+    
+    // Check vector length
+    if (N_VGetLength_Serial(y_tmp) != N_) {
+        N_VDestroy_Serial(y_tmp);
+        throw std::runtime_error("Initial condition vector length doesn't match system size");
     }
     
+    // Clone the vector to keep a copy
+    if (y_ != nullptr && y_owner_) {
+        N_VDestroy_Serial(y_);
+    }
+    
+    y_ = N_VClone(y_tmp);
+    if (y_ == nullptr) {
+        N_VDestroy_Serial(y_tmp);
+        throw std::runtime_error("Failed to clone y vector");
+    }
+    
+    // Copy data from temporary vector to y_
+    realtype* dest = N_VGetArrayPointer_Serial(y_);
+    realtype* src = N_VGetArrayPointer_Serial(y_tmp);
+    
+    for (int i = 0; i < N_; ++i) {
+        dest[i] = src[i];
+    }
+    
+    N_VDestroy_Serial(y_tmp);  // Clean up temporary
+    y_owner_ = true;
+    
+    int flag;
+    
+    // Reinitialize the solver
+    flag = CVodeReInit(cvode_mem_, t0_, y_);
+    check_flag(&flag, "CVodeReInit", 1);
+    
+    // Set tolerances
+    if (abs_tol.size() > 0) {
+        // Vector absolute tolerance
+        N_Vector atol_vec = numpy_to_nvector(abs_tol);
+        flag = CVodeSVtolerances(cvode_mem_, rel_tol, atol_vec);
+        check_flag(&flag, "CVodeSVtolerances", 1);
+        N_VDestroy_Serial(atol_vec);
+    } else {
+        // Scalar absolute tolerance - use a more reasonable default
+        realtype scalar_atol = rel_tol * 1.0e-6;  // Better default than 1e-3
+        flag = CVodeSStolerances(cvode_mem_, rel_tol, scalar_atol);
+        check_flag(&flag, "CVodeSStolerances", 1);
+    }
+    
+    // IMPORTANT: Set maximum number of steps (this was missing!)
+    flag = CVodeSetMaxNumSteps(cvode_mem_, mxsteps_);
+    check_flag(&flag, "CVodeSetMaxNumSteps", 1);
+    
+    // Set maximum step size if needed for stiff problems
+    // flag = CVodeSetMaxStep(cvode_mem_, 1.0e-3);  // Uncomment if needed
+    // check_flag(&flag, "CVodeSetMaxStep", 1);
+    
+    // Set minimum step size if needed
+    flag = CVodeSetMinStep(cvode_mem_, 1.0e-16);  // Uncomment if needed
+    check_flag(&flag, "CVodeSetMinStep", 1);
+    
+    // For stiff problems, you might want to set initial step size
+    flag = CVodeSetInitStep(cvode_mem_, 1.0e-12);  // Very small initial step
+    check_flag(&flag, "CVodeSetInitStep", 1);
+    
+    // Set stability limit detection (can help with stiff problems)
+    flag = CVodeSetStabLimDet(cvode_mem_, SUNTRUE);
+    check_flag(&flag, "CVodeSetStabLimDet", 1);
+    
+    // For Newton iteration, set additional parameters
+    if (using_newton_iteration_) {
+        // Set maximum number of nonlinear iterations
+        flag = CVodeSetMaxNonlinIters(cvode_mem_, 10);  // Increased from default 3
+        check_flag(&flag, "CVodeSetMaxNonlinIters", 1);
+        
+        // Set maximum number of convergence failures
+        flag = CVodeSetMaxConvFails(cvode_mem_, 20);  // Increased from default 10
+        check_flag(&flag, "CVodeSetMaxConvFails", 1);
+        
+        // Set nonlinear convergence coefficient
+        flag = CVodeSetNonlinConvCoef(cvode_mem_, 0.1);  // Default is 0.1
+        check_flag(&flag, "CVodeSetNonlinConvCoef", 1);
+    } else {
+        // For functional iteration, set maximum number of iterations
+        flag = CVodeSetMaxNonlinIters(cvode_mem_, 25);  // Higher for functional
+        check_flag(&flag, "CVodeSetMaxNonlinIters", 1);
+    }
+    
+    // Make sure user data is properly set
+    flag = CVodeSetUserData(cvode_mem_, user_data_);
+    check_flag(&flag, "CVodeSetUserData in initialize", 1);
+    
+    // // Optional: Set error handler for better debugging
+    // flag = CVodeSetErrHandlerFn(cvode_mem_, NULL, NULL);  // Use default error handler
+    // check_flag(&flag, "CVodeSetErrHandlerFn", 1);
+    
+    } catch (const std::exception& e) {
+    throw std::runtime_error(std::string("Error initializing solver: ") + e.what());
+    }
+    }
+
+    void setState(const std::vector<realtype>& y_new, double t_new = 0.0) {
+        if (y_ == nullptr) {
+            throw std::runtime_error("Solver not initialized. Call initialize() first.");
+        }
+        
+        if (y_new.size() != static_cast<size_t>(N_)) {
+            throw std::runtime_error("State vector length doesn't match system size");
+        }
+        
+        // Update internal time
+        t0_ = t_new;
+        
+        // Update state vector
+        realtype* y_data = N_VGetArrayPointer_Serial(y_);
+        for (int i = 0; i < N_; ++i) {
+            y_data[i] = y_new[i];
+        }
+        
+        // Reset CVODE's internal state
+        int flag = CVodeReInit(cvode_mem_, t0_, y_);
+        check_flag(&flag, "CVodeReInit in setState", 1);
+    }
+    
+
     // Set the Jacobian function
     void set_jacobian(PyJacFn jac_fn) {
         if (A_ == nullptr || LS_ == nullptr) {
@@ -256,44 +330,26 @@ CVodeSolver(int system_size,
             throw std::runtime_error("Cannot set Jacobian: Not using Newton iteration");
         }
         
-        // Create or update Jacobian data
-        if (jac_data_ == nullptr) {
-            jac_data_ = new PyJacFnData{jac_fn, N_};
-        } else {
-            jac_data_->py_jac_fn = jac_fn;
-        }
-        
-        // Set Jacobian function in CVODE
-        int flag = CVodeSetJacFn(cvode_mem_, jac_dense_wrapper);
+        // Update unified user data and attach CVODE-specific Jacobian wrapper
+        user_data_->py_jac_fn = jac_fn;
+        user_data_->has_jacobian = true;
+        int flag = CVodeSetJacFn(cvode_mem_, cvode_jac_dense_wrapper);
         check_flag(&flag, "CVodeSetJacFn", 1);
-        
-        // Set user data (note: this will override previous user data)
-        flag = CVodeSetUserData(cvode_mem_, jac_data_);
-        check_flag(&flag, "CVodeSetUserData", 1);
     }
     
     // Set root finding function
     void set_root_function(PyRootFn root_fn, int nrtfn) {
-        // Create or update root data
-        if (root_data_ == nullptr) {
-            root_data_ = new PyRootFnData{root_fn, nrtfn};
-        } else {
-            root_data_->py_root_fn = root_fn;
-            root_data_->nrtfn = nrtfn;
-        }
-        
-        // Set root function in CVODE
-        int flag = CVodeRootInit(cvode_mem_, nrtfn, root_wrapper);
+        // Update unified user data and set CVODE root wrapper
+        user_data_->py_root_fn = root_fn;
+        user_data_->has_root = true;
+        user_data_->nrtfn = nrtfn;
+        int flag = CVodeRootInit(cvode_mem_, nrtfn, cvode_root_wrapper);
         check_flag(&flag, "CVodeRootInit", 1);
-        
-        // Set user data
-        flag = CVodeSetUserData(cvode_mem_, root_data_);
-        check_flag(&flag, "CVodeSetUserData", 1);
     }
     
     // Solve to a specific time point
     py::array_t<realtype> solve_to(double tout) {
-        std::cout << "[DEBUG] solve_to() start. tout=" << tout << std::endl;
+        // std::cout << "[DEBUG] solve_to() start. tout=" << tout << std::endl;
         if (y_ == nullptr) {
             throw std::runtime_error("Solver not initialized with initial conditions");
         }
@@ -303,7 +359,7 @@ CVodeSolver(int system_size,
         
         realtype t = t0_;
         int flag = CVode(cvode_mem_, tout, y_, &t, CV_NORMAL);
-        std::cout << "[DEBUG] solve_to() after CVode call. flag=" << flag << std::endl;
+        // std::cout << "[DEBUG] solve_to() after CVode call. flag=" << flag << std::endl;
         
         if (flag < 0) {
             std::cerr << "CVODE solver error code: " << flag << std::endl;
@@ -313,7 +369,7 @@ CVodeSolver(int system_size,
         // std::cout << "Integration completed successfully to t=" << t << std::endl;
         
         // Convert result to numpy array
-        std::cout << "[DEBUG] solve_to() end." << std::endl;
+        // std::cout << "[DEBUG] solve_to() end." << std::endl;
         return nvector_to_numpy(y_);
     }
     
@@ -428,12 +484,13 @@ void init_cvode_module(py::module_ &m) {
     
     // Register CVodeSolver class with updated constructor
     py::class_<CVodeSolver>(m, "CVodeSolver")
-        .def(py::init<int, PyRhsFn, IterationType, LinearSolverType, bool>(),
+        .def(py::init<int, PyRhsFn, IterationType, LinearSolverType, bool, int>(),
              py::arg("system_size"),
              py::arg("rhs_fn"),
              py::arg("iter_type") = IterationType::NEWTON,
              py::arg("linsol_type") = LinearSolverType::DENSE,
              py::arg("use_bdf") = true,  // Add this parameter
+             py::arg("mxsteps") = 1000,
              "Create a CVODE solver for an ODE system")
         .def("initialize", &CVodeSolver::initialize,
              py::arg("y0"),
@@ -441,6 +498,10 @@ void init_cvode_module(py::module_ &m) {
              py::arg("rel_tol") = 1.0e-6,
              py::arg("abs_tol") = py::array_t<realtype>(),
              "Initialize the solver with initial conditions")
+        .def("set_state", &CVodeSolver::setState,
+             py::arg("y_new"),
+             py::arg("t_new") = 0.0,
+             "Set the state of the solver")
         .def("set_jacobian", &CVodeSolver::set_jacobian,
              py::arg("jac_fn"),
              "Set the Jacobian function for implicit solves")

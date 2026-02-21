@@ -4,48 +4,27 @@
 #include <pybind11/numpy.h>
 #include <pybind11/functional.h>
 #include <pybind11/stl.h>
+#include <iostream>
 
 #include <arkode/arkode.h>
 #include <arkode/arkode_butcher.h>
 #include <arkode/arkode_butcher_dirk.h>
 #include <arkode/arkode_butcher_erk.h>
 #include <arkode/arkode_ls.h>
-#include <arkode/arkode_erkstep.h>  // Include ERKStep interface
-#include <arkode/arkode_arkstep.h>  // Include ARKStep interface
+#include <arkode/arkode_erkstep.h>
+#include <arkode/arkode_arkstep.h>
 #include <sunmatrix/sunmatrix_dense.h>
 #include <sunlinsol/sunlinsol_dense.h>
 #include <sundials/sundials_types.h>
 #include <nvector/nvector_serial.h>
 #include <optional>
-#include <iostream>
 
 #include "../common/common.hpp"
 #include "../utils/callback_wrappers.hpp"
 
 namespace py = pybind11;
 
-// Forward declarations (defined in butcher_tables.cpp)
-// extern bool is_imex_pair(ButcherTable table);
-// extern bool is_explicit_method(ButcherTable table);
-// extern bool is_implicit_method(ButcherTable table);
-// extern ARKODE_ERKTableID get_erk_table_id(ButcherTable table);
-// extern ARKODE_DIRKTableID get_dirk_table_id(ButcherTable table);
-// extern std::string get_butcher_table_description(ButcherTable table);
 namespace sundials_py {
-    extern bool is_imex_pair(ButcherTable table);
-    extern bool is_explicit_method(ButcherTable table);
-    extern bool is_implicit_method(ButcherTable table);
-    extern ARKODE_ERKTableID get_erk_table_id(ButcherTable table);
-    extern ARKODE_DIRKTableID get_dirk_table_id(ButcherTable table);
-    extern std::string get_butcher_table_description(ButcherTable table);
-}
-
-
-
-namespace sundials_py {
-
-// Initialize the static member outside the class
-ARKodeSolver* current_solver_for_jacobian = nullptr;
 
 // ARKODE Solver Class
 class ARKodeSolver {
@@ -58,10 +37,9 @@ private:
     double t0_;
     double tcur_;  // Current integration time
     
-    // Callback data containers
+    // Single unified callback data container
     PyArkFnData* ark_data_;
-    PyJacFnData* jac_data_;
-    PyRootFnData* root_data_;
+    PyRootFnData* root_data_;  // Keep separate for root finding
     
     // Linear solver and matrix
     SUNMatrix A_;
@@ -78,10 +56,6 @@ private:
     bool using_arkstep_;
 
 public:
-    // Make jac_data_ accessible to friends
-    friend int jac_dense_wrapper(realtype t, N_Vector y, N_Vector fy, 
-                          SUNMatrix J, void* user_data, 
-                          N_Vector tmp1, N_Vector tmp2, N_Vector tmp3);
     // Constructor
     ARKodeSolver(int system_size, 
             PyRhsFn explicit_fn, 
@@ -91,8 +65,7 @@ public:
         : N_(system_size), 
         t0_(0.0),
         tcur_(0.0),
-        ark_data_(new PyArkFnData{explicit_fn, implicit_fn}),
-        jac_data_(nullptr),
+        ark_data_(new PyArkFnData{explicit_fn, implicit_fn, nullptr, false, system_size}),
         root_data_(nullptr),
         A_(nullptr),
         LS_(nullptr),
@@ -109,8 +82,6 @@ public:
         using_arkstep_ = (implicit_fn.has_value() || is_implicit_method(butcher_table) || 
                          is_imex_pair(butcher_table));
         
-        //std::cout << "Creating solver: " << (using_arkstep_ ? "ARKStep" : "ERKStep") << std::endl;
-        
         // Create a temporary vector for initialization
         N_Vector y0_dummy = N_VNew_Serial(system_size, sunctx);
         if (!y0_dummy) {
@@ -122,12 +93,10 @@ public:
             arkode_mem_ = ARKStepCreate(
                 ark_explicit_wrapper, ark_implicit_wrapper, 
                 t0_, y0_dummy, sunctx);
-            
         } else {
             // Use ERKStep for purely explicit problems
             arkode_mem_ = ERKStepCreate(
                 ark_explicit_wrapper, t0_, y0_dummy, sunctx);
-       
         }
         
         N_VDestroy_Serial(y0_dummy);  // Clean up temporary vector
@@ -141,7 +110,6 @@ public:
         check_flag(&flag, "ARKodeSetUserData", 1);
         
         // Create matrix and linear solver if needed for implicit methods
-        // In the constructor, after creating A_ and LS_:
         if (using_arkstep_ && (implicit_fn.has_value() || is_implicit_method(butcher_table))) {
             if (linsol_type == LinearSolverType::DENSE) {
                 A_ = SUNDenseMatrix(N_, N_, sunctx);
@@ -149,27 +117,19 @@ public:
                     throw std::runtime_error("Failed to create dense matrix");
                 }
 
-                 // Create temporary vector for linear solver initialization
-                N_Vector tmp_vec = N_VNew_Serial(N_, sunctx);
-                if (tmp_vec == nullptr) {
-                    SUNMatDestroy(A_);
-                    throw std::runtime_error("Failed to create temporary vector for linear solver");
-                }
-                
                 LS_ = SUNLinSol_Dense(nullptr, A_, sunctx);
-                N_VDestroy_Serial(tmp_vec);
                 if (LS_ == nullptr) {
                     SUNMatDestroy(A_);
                     throw std::runtime_error("Failed to create dense linear solver");
                 }
                 
-                // Attach the linear solver to the ARKODE memory
-                int flag = ARKStepSetLinearSolver(arkode_mem_, LS_, A_);
-                check_flag(&flag, "ARKStepSetLinearSolver", 1);
+                // Use the new unified ARKODE functions instead of deprecated ARKStep functions
+                int flag = ARKodeSetLinearSolver(arkode_mem_, LS_, A_);
+                check_flag(&flag, "ARKodeSetLinearSolver", 1);
 
                 // Set ARKODE to use its internal difference quotient Jacobian by default
-                flag = ARKStepSetJacFn(arkode_mem_, NULL);
-                check_flag(&flag, "ARKStepSetJacFn to NULL", 1);
+                flag = ARKodeSetJacFn(arkode_mem_, NULL);
+                check_flag(&flag, "ARKodeSetJacFn to NULL", 1);
             }
         }
     }
@@ -194,13 +154,8 @@ public:
         }
         
         delete ark_data_;
-        delete jac_data_;
         delete root_data_;
     }
-
-    static ARKodeSolver* current_solver_for_jacobian;
-
-
     
     // Initialize the solver with initial conditions
     void initialize(py::array_t<realtype> y0, double t0 = 0.0, 
@@ -247,31 +202,64 @@ public:
             if (using_arkstep_) {
                 flag = ARKStepReInit(arkode_mem_, ark_explicit_wrapper, ark_implicit_wrapper, t0_, y_);
                 check_flag(&flag, "ARKStepReInit", 1);
-                //std::cout << "ARKStep reinitialized" << std::endl;
             } else {
                 flag = ERKStepReInit(arkode_mem_, ark_explicit_wrapper, t0_, y_);
                 check_flag(&flag, "ERKStepReInit", 1);
-                //  std::cout << "ERKStep reinitialized" << std::endl;
             }
             
-            // Set Butcher tables (rest of the code...)
+            // Set tolerances
+            if (abs_tol.size() > 0) {
+                // std::cout << "abs_tol is not empty setting to " << abs_tol << std::endl;
+                N_Vector abs_tol_vec = numpy_to_nvector(abs_tol);
+                flag = ARKodeSVtolerances(arkode_mem_, rel_tol, abs_tol_vec);
+                N_VDestroy_Serial(abs_tol_vec);
+            } else {
+                // std::cout << "abs_tol is empty setting to 1e-8" << std::endl;
+                flag = ARKodeSStolerances(arkode_mem_, rel_tol, 1e-8);
+            }
+            check_flag(&flag, "ARKode tolerances", 1);
             
-            // Make sure user data is properly set
+            // Make sure user data is properly set after reinitialization
             flag = ARKodeSetUserData(arkode_mem_, ark_data_);
             check_flag(&flag, "ARKodeSetUserData in initialize", 1);
             
         } catch (const std::exception& e) {
             throw std::runtime_error(std::string("Error initializing solver: ") + e.what());
         }
+        if (using_arkstep_) {
+            // For ARKStep, we need to set both ERK and DIRK tables
+            if (is_imex_pair(butcher_table_)) {
+                // std::cout << "Setting ARKStep to ImEx pair " << get_butcher_table_description(butcher_table_) << std::endl;
+                // ImEx pair - set both tables (both non-negative)
+                ARKODE_ERKTableID erk_id = get_erk_table_id(butcher_table_);
+                ARKODE_DIRKTableID dirk_id = get_dirk_table_id(butcher_table_);
+                
+                int flag = ARKStepSetTableNum(arkode_mem_, dirk_id, erk_id);
+                check_flag(&flag, "ARKStepSetTableNum", 1);
+            } else if (is_implicit_method(butcher_table_)) {
+                // std::cout << "Setting ARKStep to implicit method " << get_butcher_table_description(butcher_table_) << std::endl;
+                // Implicit method - set itable to DIRK ID, etable to negative value
+                ARKODE_DIRKTableID dirk_id = get_dirk_table_id(butcher_table_);
+                
+                int flag = ARKStepSetTableNum(arkode_mem_, dirk_id, static_cast<ARKODE_ERKTableID>(-1));
+                check_flag(&flag, "ARKStepSetTableNum", 1);
+            } else {
+                // std::cout << "Setting ARKStep to explicit method " << get_butcher_table_description(butcher_table_) << std::endl;
+                // Explicit method - set itable to negative value, etable to ERK ID
+                ARKODE_ERKTableID erk_id = get_erk_table_id(butcher_table_);
+                
+                int flag = ARKStepSetTableNum(arkode_mem_, static_cast<ARKODE_DIRKTableID>(-1), erk_id);
+                check_flag(&flag, "ARKStepSetTableNum", 1);
+            }
+        } else {
+            // std::cout << "Setting ERKStep to " << get_butcher_table_description(butcher_table_) << std::endl;
+            // For ERKStep, set the ERK table
+            ARKODE_ERKTableID erk_id = get_erk_table_id(butcher_table_);
+            
+            int flag = ERKStepSetTableNum(arkode_mem_, erk_id);
+            check_flag(&flag, "ERKStepSetTableNum", 1);
+        }
     }
-
-    
-
-
-    void set_as_current_solver() {
-        current_solver_for_jacobian = this;
-    }
-    
 
     void set_jacobian(PyJacFn jac_fn) {
         if (!using_arkstep_) {
@@ -282,92 +270,47 @@ public:
             throw std::runtime_error("Cannot set Jacobian: No linear solver attached");
         }
 
-        set_as_current_solver();
+        // Update the ark_data_ structure with the Jacobian function
+        ark_data_->py_jacobian_fn = jac_fn;
+        ark_data_->has_jacobian = true;
+        ark_data_->N = N_;  // Make sure N is properly set
         
-        // Create or update Jacobian data
-        if (jac_data_ == nullptr) {
-            jac_data_ = new PyJacFnData{jac_fn, N_};
-        } else {
-            jac_data_->py_jac_fn = jac_fn;
-            jac_data_->N = N_;  // Make sure N is updated
-        }
+        // Set Jacobian function in ARKODE - use the unified function
+        int flag = ARKodeSetJacFn(arkode_mem_, jac_dense_wrapper);
+        check_flag(&flag, "ARKodeSetJacFn", 1);
         
-        // Set Jacobian function in ARKODE
-        int flag = ARKStepSetJacFn(arkode_mem_, jac_dense_wrapper);
-        check_flag(&flag, "ARKStepSetJacFn", 1);
-        
-        // Store current user data to restore later
-        void* current_user_data = nullptr;
-        flag = ARKStepGetUserData(arkode_mem_, &current_user_data);
-        
-        // Set user data to Jacobian data for Jacobian calls
-        flag = ARKStepSetUserData(arkode_mem_, jac_data_);
-        check_flag(&flag, "ARKStepSetUserData for Jacobian", 1);
-        
-        std::cout << "Jacobian function set successfully with user_data=" << jac_data_ << std::endl;
+        // std::cout << "Jacobian function set successfully with user_data=" << ark_data_ << std::endl;
     }
         
     // Set root finding function
     void set_root_function(PyRootFn root_fn, int nrtfn) {
-        // Create or update root data
-        if (root_data_ == nullptr) {
-            root_data_ = new PyRootFnData{root_fn, nrtfn};
-        } else {
-            root_data_->py_root_fn = root_fn;
-            root_data_->nrtfn = nrtfn;
-        }
-        
-        // Set root function in ARKODE
+        // Attach root function to the main user_data and initialize ARKODE roots
+        ark_data_->py_root_fn = root_fn;
+        ark_data_->has_root = true;
+        ark_data_->nrtfn = nrtfn;
+
         int flag = ARKodeRootInit(arkode_mem_, nrtfn, root_wrapper);
         check_flag(&flag, "ARKodeRootInit", 1);
-        
-        // Set user data
-        flag = ARKodeSetUserData(arkode_mem_, root_data_);
-        check_flag(&flag, "ARKodeSetUserData", 1);
     }
     
-    // Set adaptive step size parameters
+    // Set adaptive step size parameters (using modern SUNDIALS approach)
     void set_adaptive_params(double adapt_params[3]) {
-        // Create an array of parameters
-        sunrealtype params[3] = {
-            static_cast<sunrealtype>(adapt_params[0]),
-            static_cast<sunrealtype>(adapt_params[1]),
-            static_cast<sunrealtype>(adapt_params[2])
-        };
-        
-        int flag;
-        if (using_arkstep_) {
-            flag = ARKStepSetAdaptivityMethod(arkode_mem_, 1, 0, 0, params);
-        } else {
-            flag = ERKStepSetAdaptivityMethod(arkode_mem_, 1, 0, 0, params);
-        }
-        check_flag(&flag, "Set Adaptivity Method", 1);
+        // Note: The old ARKStepSetAdaptivityMethod is deprecated
+        // For now, we'll skip this or implement with the new SUNAdaptController
+        std::cout << "Warning: Adaptive parameters setting skipped - use SUNAdaptController for modern SUNDIALS" << std::endl;
     }
     
-    // Add a new method to set fixed step size
+    // Set fixed step size
     void set_fixed_step_size(double step_size) {
-        int flag;
-        
-        // Disable adaptivity
-        if (using_arkstep_) {
-            flag = ARKStepSetFixedStep(arkode_mem_, step_size);
-        } else {
-            flag = ERKStepSetFixedStep(arkode_mem_, step_size);
-        }
-        check_flag(&flag, "Set Fixed Step Size", 1);
+        int flag = ARKodeSetFixedStep(arkode_mem_, step_size);
+        check_flag(&flag, "ARKodeSetFixedStep", 1);
     }
 
-    // Add this method to the ARKodeSolver class
+    // Set maximum number of steps
     void set_max_num_steps(long int mxsteps) {
-        int flag;
-        if (using_arkstep_) {
-            flag = ARKStepSetMaxNumSteps(arkode_mem_, mxsteps);
-        } else {
-            flag = ERKStepSetMaxNumSteps(arkode_mem_, mxsteps);
-        }
-        check_flag(&flag, "Set Max Num Steps", 1);
+        int flag = ARKodeSetMaxNumSteps(arkode_mem_, mxsteps);
+        check_flag(&flag, "ARKodeSetMaxNumSteps", 1);
     }
-
     
     // Get the current solution
     py::array_t<realtype> get_current_solution() {
@@ -382,18 +325,13 @@ public:
         return tcur_;
     }
     
-    // Integrate to a specified time (similar to the online example)
+    // Integrate to a specified time
     int integrate_to_time(double tout) {
         if (y_ == nullptr) {
             throw std::runtime_error("Solver not initialized with initial conditions");
         }
         
-        int flag;
-        if (using_arkstep_) {
-            flag = ARKStepEvolve(arkode_mem_, tout, y_, &tcur_, ARK_NORMAL);
-        } else {
-            flag = ERKStepEvolve(arkode_mem_, tout, y_, &tcur_, ARK_NORMAL);
-        }
+        int flag = ARKodeEvolve(arkode_mem_, tout, y_, &tcur_, ARK_NORMAL);
         
         if (flag < 0) {
             throw std::runtime_error("ARKODE solver error: " + std::to_string(flag));
@@ -402,18 +340,13 @@ public:
         return flag;
     }
     
-    // Take a single step toward the target time (may not reach it)
+    // Take a single step toward the target time
     int advance_one_step(double tout) {
         if (y_ == nullptr) {
             throw std::runtime_error("Solver not initialized with initial conditions");
         }
         
-        int flag;
-        if (using_arkstep_) {
-            flag = ARKStepEvolve(arkode_mem_, tout, y_, &tcur_, ARK_ONE_STEP);
-        } else {
-            flag = ERKStepEvolve(arkode_mem_, tout, y_, &tcur_, ARK_ONE_STEP);
-        }
+        int flag = ARKodeEvolve(arkode_mem_, tout, y_, &tcur_, ARK_ONE_STEP);
         
         if (flag < 0) {
             throw std::runtime_error("ARKODE solver error: " + std::to_string(flag));
@@ -455,7 +388,6 @@ public:
         for (int i = 0; i < num_times; ++i) {
             double tout = times[i];
             
-            // Use integrate_to_time to reach this time point
             try {
                 integrate_to_time(tout);
                 
@@ -476,7 +408,7 @@ public:
                 
             } catch (const std::exception& e) {
                 std::cerr << "Error in step " << i << ": " << e.what() << std::endl;
-                throw;  // Re-throw the exception
+                throw;
             }
         }
     
@@ -487,58 +419,41 @@ public:
     py::dict get_stats() {
         py::dict stats;
         
-        // Add solver type to stats
         stats["solver_type"] = using_arkstep_ ? "ARKStep" : "ERKStep";
         
         try {
             long int nsteps = 0;
             
-            // Get number of steps - this should be available for all solver types
-            int flag;
-            if (using_arkstep_) {
-                flag = ARKStepGetNumSteps(arkode_mem_, &nsteps);
-            } else {
-                flag = ERKStepGetNumSteps(arkode_mem_, &nsteps);
-            }
-            
+            int flag = ARKodeGetNumSteps(arkode_mem_, &nsteps);
             if (flag == 0) {
                 stats["num_steps"] = nsteps;
             } else {
                 stats["num_steps"] = "Error retrieving";
             }
             
-            // Get RHS evaluations - try/catch each call individually
+            // Get RHS evaluations
             try {
                 long int nfevals_explicit = 0, nfevals_implicit = 0;
-                
                 if (using_arkstep_) {
-                    // For ARKStep, get both explicit and implicit evaluations
-                    flag = ARKStepGetNumRhsEvals(arkode_mem_, &nfevals_explicit, &nfevals_implicit);
-                    if (flag == 0) {
+                    int flag_exp = ARKodeGetNumRhsEvals(arkode_mem_, 0, &nfevals_explicit); // explicit
+                    int flag_imp = ARKodeGetNumRhsEvals(arkode_mem_, 1, &nfevals_implicit); // implicit
+                    if (flag_exp == 0) {
                         stats["num_rhs_evals_explicit"] = nfevals_explicit;
-                        stats["num_rhs_evals_implicit"] = nfevals_implicit;
                     } else {
                         stats["num_rhs_evals_explicit"] = "Error retrieving";
+                    }
+                    if (flag_imp == 0) {
+                        stats["num_rhs_evals_implicit"] = nfevals_implicit;
+                    } else {
                         stats["num_rhs_evals_implicit"] = "Error retrieving";
                     }
                 } else {
-                    // For ERKStep, only try to get explicit evaluations
-                    try {
-                        flag = ERKStepGetNumRhsEvals(arkode_mem_, &nfevals_explicit);
-                        if (flag == 0) {
-                            stats["num_rhs_evals_explicit"] = nfevals_explicit;
-                        } else {
-                            stats["num_rhs_evals_explicit"] = "Error retrieving";
-                        }
-                    } catch (const std::exception& e) {
-                        std::cerr << "Exception in ERKStepGetNumRhsEvals: " << e.what() << std::endl;
-                        stats["num_rhs_evals_explicit"] = "Exception";
-                    } catch (...) {
-                        std::cerr << "Unknown exception in ERKStepGetNumRhsEvals" << std::endl;
-                        stats["num_rhs_evals_explicit"] = "Unknown exception";
+                    int flag_exp = ARKodeGetNumRhsEvals(arkode_mem_, 0, &nfevals_explicit);
+                    if (flag_exp == 0) {
+                        stats["num_rhs_evals_explicit"] = nfevals_explicit;
+                    } else {
+                        stats["num_rhs_evals_explicit"] = "Error retrieving";
                     }
-                    
-                    // ERKStep has no implicit evaluations
                     stats["num_rhs_evals_implicit"] = 0;
                 }
             } catch (const std::exception& e) {
@@ -550,14 +465,14 @@ public:
             try {
                 if (using_arkstep_) {
                     long int nlinsetups = 0;
-                    flag = ARKStepGetNumLinSolvSetups(arkode_mem_, &nlinsetups);
+                    flag = ARKodeGetNumLinSolvSetups(arkode_mem_, &nlinsetups);
                     if (flag == 0) {
                         stats["num_lin_setups"] = nlinsetups;
                     } else {
                         stats["num_lin_setups"] = "Error retrieving";
                     }
                 } else {
-                    stats["num_lin_setups"] = 0; // Not applicable for ERKStep
+                    stats["num_lin_setups"] = 0;
                 }
             } catch (const std::exception& e) {
                 std::cerr << "Exception getting lin setups: " << e.what() << std::endl;
@@ -567,11 +482,7 @@ public:
             // Get error test failures
             try {
                 long int netfails = 0;
-                if (using_arkstep_) {
-                    flag = ARKStepGetNumErrTestFails(arkode_mem_, &netfails);
-                } else {
-                    flag = ERKStepGetNumErrTestFails(arkode_mem_, &netfails);
-                }
+                flag = ARKodeGetNumErrTestFails(arkode_mem_, &netfails);
                 
                 if (flag == 0) {
                     stats["num_error_test_fails"] = netfails;
@@ -583,25 +494,9 @@ public:
                 stats["num_error_test_fails"] = "Exception";
             }
             
-            // Get additional stats specific to explicit solvers
-            if (!using_arkstep_) {
-                try {
-                    long int nacpts = 0;
-                    flag = ERKStepGetNumStepAttempts(arkode_mem_, &nacpts);
-                    if (flag == 0) {
-                        stats["num_step_attempts"] = nacpts;
-                    }
-                } catch (...) {
-                    // If this fails, just skip it
-                }
-            }
-            
         } catch (const std::exception& e) {
             std::cerr << "Exception in get_stats: " << e.what() << std::endl;
             stats["error"] = "Exception retrieving statistics";
-        } catch (...) {
-            std::cerr << "Unknown exception in get_stats" << std::endl;
-            stats["error"] = "Unknown exception retrieving statistics";
         }
         
         return stats;
@@ -624,18 +519,11 @@ public:
     double get_last_step() {
         realtype hlast;
         
-        int flag;
-        if (using_arkstep_) {
-            flag = ARKStepGetLastStep(arkode_mem_, &hlast);
-        } else {
-            flag = ERKStepGetLastStep(arkode_mem_, &hlast);
-        }
-        check_flag(&flag, "Get Last Step", 1);
+        int flag = ARKodeGetLastStep(arkode_mem_, &hlast);
+        check_flag(&flag, "ARKodeGetLastStep", 1);
         return static_cast<double>(hlast);
     }
 };
-
-ARKodeSolver* ARKodeSolver::current_solver_for_jacobian = nullptr;
 
 // Module initialization function
 void init_arkode_module(py::module_ &m) {
@@ -652,12 +540,25 @@ void init_arkode_module(py::module_ &m) {
         .value("VERNER_8_5_6", ButcherTable::VERNER_8_5_6)
         .value("FEHLBERG_13_7_8", ButcherTable::FEHLBERG_13_7_8)
         
-        // Implicit methods (these won't work with ERKStep, but included for completeness)
+        // Implicit methods
+        .value("BACKWARD_EULER_1_1", ButcherTable::BACKWARD_EULER_1_1)
+        .value("ARK2_DIRK_3_1_2", ButcherTable::ARK2_DIRK_3_1_2)
         .value("SDIRK_2_1_2", ButcherTable::SDIRK_2_1_2)
+        .value("IMPLICIT_MIDPOINT_1_2", ButcherTable::IMPLICIT_MIDPOINT_1_2)
+        .value("IMPLICIT_TRAPEZOIDAL_2_2", ButcherTable::IMPLICIT_TRAPEZOIDAL_2_2)
+        .value("ESDIRK325L2SA_5_2_3", ButcherTable::ESDIRK325L2SA_5_2_3)
+        .value("ESDIRK324L2SA_4_2_3", ButcherTable::ESDIRK324L2SA_4_2_3)
+        .value("ESDIRK32I5L2SA_5_2_3", ButcherTable::ESDIRK32I5L2SA_5_2_3)
         .value("BILLINGTON_3_3_2", ButcherTable::BILLINGTON_3_3_2)
         .value("TRBDF2_3_3_2", ButcherTable::TRBDF2_3_3_2)
         .value("KVAERNO_4_2_3", ButcherTable::KVAERNO_4_2_3)
         .value("ARK324L2SA_DIRK_4_2_3", ButcherTable::ARK324L2SA_DIRK_4_2_3)
+        .value("ESDIRK436L2SA_6_3_4", ButcherTable::ESDIRK436L2SA_6_3_4)
+        .value("ESDIRK43I6L2SA_6_3_4", ButcherTable::ESDIRK43I6L2SA_6_3_4)
+        .value("QESDIRK436L2SA_6_3_4", ButcherTable::QESDIRK436L2SA_6_3_4)
+        .value("ESDIRK437L2SA_7_3_4", ButcherTable::ESDIRK437L2SA_7_3_4)
+        .value("ESDIRK547L2SA2_7_4_5", ButcherTable::ESDIRK547L2SA2_7_4_5)
+        .value("KVAERNO_5_3_4", ButcherTable::KVAERNO_5_3_4)
         .value("CASH_5_2_4", ButcherTable::CASH_5_2_4)
         .value("CASH_5_3_4", ButcherTable::CASH_5_3_4)
         .value("SDIRK_5_3_4", ButcherTable::SDIRK_5_3_4)
@@ -675,7 +576,7 @@ void init_arkode_module(py::module_ &m) {
 
     
     // Register ARKodeSolver class
-    py::class_<ARKodeSolver>(m, "ARKodeSolver")
+    py::class_<ARKodeSolver>(m, "ARKodeSolver", py::dynamic_attr())
         .def(py::init<int, PyRhsFn, std::optional<PyRhsFn>, ButcherTable, LinearSolverType>(),
              py::arg("system_size"),
              py::arg("explicit_fn"),

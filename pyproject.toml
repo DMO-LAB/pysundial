@@ -10,39 +10,29 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sundials_py"
+name = "SundialsPy"
 version = "0.1.0"
-description = "Python bindings for SUNDIALS solvers"
+description = "Python bindings for SUNDIALS"
+authors = [{name = "Eloghosa Ikponmwoba", email = "eloghosaefficiency@gmail.com"}]
 readme = "README.md"
-authors = [
-    {name = "Eloghosa", email = "eloghosaefficiency@gmail.com"}
-]
-license = {text = "MIT"}
-requires-python = ">=3.7"
-dependencies = [
-    "numpy>=1.19.0"
-]
-keywords = ["sundials", "ode", "pde", "differential equations", "scientific computing"]
+requires-python = ">=3.8"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
-    "Topic :: Scientific/Engineering :: Mathematics",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "numpy>=1.19.0",
 ]
 
-[project.optional-dependencies]
-test = ["pytest", "pytest-cov"]
-dev = ["pytest", "pytest-cov", "black", "flake8"]
-
 [project.urls]
-Homepage = "https://github.com/DMO-LAB/pysundial"
-Repository = "https://github.com/DMO-LAB/pysundial/
-Issues = "https://github.com/DMO-LAB/pysundial/issues"
+Homepage = "https://github.com/elotech47/SundialsPy"
+Repository = "https://github.com/elotech47/SundialsPy"
 
 [tool.setuptools]
-packages = ["sundials_py"]
+packages = ["SundialsPy"]

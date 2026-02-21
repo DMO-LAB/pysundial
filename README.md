@@ -1,232 +1,213 @@
-# PySundial - Python Bindings for SUNDIALS
+# SundialsPy
 
-Python bindings for the SUNDIALS suite of differential equation solvers, providing Python interfaces to CVODE, ARKODE, and other SUNDIALS solvers.
+SundialsPy is a Python interface to the SUNDIALS suite of ODE and DAE solvers, providing high-performance, flexible, and user-friendly access to advanced time integration algorithms for scientific computing and engineering applications.
 
 ## Features
+- Pythonic interface to SUNDIALS core solvers
+- Support for both stiff and non-stiff ODEs
+- Access to CVODE and ARKODE integrators
+- Flexible right-hand side (RHS) and Jacobian callback support
+- Vector and array tolerances
+- Easy installation and usage
 
-- Python bindings for SUNDIALS CVODE (ODE solver)
-- Python bindings for SUNDIALS ARKODE (adaptive Runge-Kutta solver)
-- NumPy integration for efficient array operations
-- Modern CMake build system with automatic dependency detection
+# SundialsPy Installation Guide
 
-## Prerequisites
+## Quick Installation (Recommended)
 
-Before installing PySundial, you need to have SUNDIALS installed on your system. The installation process varies by platform:
+If binary wheels are available for your platform:
 
-### Installing SUNDIALS
+```bash
+pip install SundialsPy
+```
+
+## Installation from Source
+
+If you need to build from source or binary wheels aren't available:
+
+### Prerequisites
 
 #### Option 1: Using Conda (Recommended)
 ```bash
-conda install -c conda-forge sundials
+conda install -c conda-forge sundials pybind11 cmake numpy
+pip install SundialsPy
 ```
 
-#### Option 2: Using Package Managers
+#### Option 2: Using System Package Managers
+
+**macOS (Homebrew):**
+```bash
+brew install sundials cmake
+pip install pybind11[global] numpy
+pip install SundialsPy
+```
 
 **Ubuntu/Debian:**
 ```bash
 sudo apt-get update
-sudo apt-get install libsundials-dev
+sudo apt-get install libsundials-dev cmake build-essential
+pip install pybind11[global] numpy
+pip install SundialsPy
 ```
 
-**macOS with Homebrew:**
-```bash
-brew install sundials
-```
+**Windows:**
+1. Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+2. Install [CMake](https://cmake.org/download/)
+3. Download and install SUNDIALS from [here](https://computing.llnl.gov/projects/sundials/sundials-software)
+4. Set environment variables:
+   ```cmd
+   set SUNDIALS_ROOT=C:\path\to\sundials
+   set SUNDIALS_INCLUDE_DIR=C:\path\to\sundials\include
+   set SUNDIALS_LIBRARY_DIR=C:\path\to\sundials\lib
+   ```
+5. Install SundialsPy:
+   ```cmd
+   pip install pybind11[global] numpy
+   pip install SundialsPy
+   ```
 
-**CentOS/RHEL/Fedora:**
-```bash
-# CentOS/RHEL
-sudo yum install sundials-devel
+### Manual SUNDIALS Installation
 
-# Fedora
-sudo dnf install sundials-devel
-```
+If SUNDIALS is not available through package managers:
 
-#### Option 3: Building from Source
-For the most up-to-date version, you can build SUNDIALS from source:
 ```bash
-git clone https://github.com/LLNL/sundials.git
-cd sundials
+# Download SUNDIALS
+wget https://github.com/LLNL/sundials/releases/download/v6.6.2/sundials-6.6.2.tar.gz
+tar -xzf sundials-6.6.2.tar.gz
+cd sundials-6.6.2
+
+# Build and install
 mkdir build && cd build
-cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
-make -j$(nproc)
-sudo make install
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_SHARED_LIBS=ON
+make -j$(nproc)  # Linux/macOS
+# make -j%NUMBER_OF_PROCESSORS%  # Windows
+sudo make install  # Linux/macOS (or run as admin on Windows)
 ```
 
-## Installation
-
-Once SUNDIALS is installed, you can install PySundial:
-
-### From Source (Development)
+Then install SundialsPy:
 ```bash
-git clone https://github.com/DMO-LAB/pysundial.git
-cd pysundial
-pip install -e .
-```
-
-### From PyPI (when available)
-```bash
-pip install sundials-py
-```
-
-## Quick Start
-
-```python
-import numpy as np
-from sundials_py import cvode
-
-# Define your ODE system
-def rhs(t, y):
-    return np.array([-0.5 * y[0], -0.1 * y[1]])
-
-# Initial conditions
-y0 = np.array([1.0, 0.5])
-t0 = 0.0
-tf = 10.0
-
-# Solve the ODE
-solver = cvode.Solver()
-t, y = solver.solve(rhs, y0, t0, tf)
-
-print(f"Solution at t={tf}: {y[-1]}")
+pip install pybind11[global] numpy
+pip install SundialsPy
 ```
 
 ## Troubleshooting
 
-### Common Installation Issues
+### Common Issues
 
-#### 1. SUNDIALS Not Found
-If you get an error about SUNDIALS not being found:
-```
-SUNDIALS NOT FOUND!
-```
-Make sure SUNDIALS is properly installed. Try:
+1. **"SUNDIALS not found" error:**
+   - Make sure SUNDIALS is installed and in your PATH
+   - Set environment variables manually:
+     ```bash
+     export SUNDIALS_ROOT=/path/to/sundials
+     export SUNDIALS_INCLUDE_DIR=/path/to/sundials/include
+     export SUNDIALS_LIBRARY_DIR=/path/to/sundials/lib
+     ```
+
+2. **"pybind11 not found" error:**
+   ```bash
+   pip install "pybind11[global]"
+   ```
+
+3. **Import errors:**
+   - Make sure you're using the correct Python environment
+   - Try reinstalling: `pip uninstall SundialsPy && pip install SundialsPy`
+
+### Supported Platforms
+
+- ✅ Linux (x86_64)
+- ✅ macOS (x86_64, arm64)
+- ✅ Windows (x86_64)
+- ✅ Python 3.8-3.12
+
+## Development Installation
+
+For developers who want to modify the code:
+
 ```bash
-# For conda users
-conda install -c conda-forge sundials
-
-# For apt users (Ubuntu/Debian)
-sudo apt-get install libsundials-dev
-```
-
-#### 2. pybind11 Not Found
-If you get an error about pybind11:
-```
-PYBIND11 NOT FOUND!
-```
-Install pybind11 with:
-```bash
-pip install pybind11[global]
-```
-
-#### 3. CMake Version Issues
-Make sure you have CMake 3.10 or later:
-```bash
-cmake --version
-```
-If needed, update CMake:
-```bash
-pip install cmake
-```
-
-### Environment-Specific Issues
-
-#### Conda Environments
-If using conda, make sure your environment is activated:
-```bash
-conda activate your-environment
-conda install -c conda-forge sundials
-pip install -e .
-```
-
-#### Virtual Environments
-If using Python virtual environments:
-```bash
-source your-venv/bin/activate
-# Install system dependencies (SUNDIALS) first
-pip install pybind11[global]
-pip install -e .
-```
-
-### Debugging Build Issues
-
-To get more verbose output during installation:
-```bash
-pip install -e . -v
-```
-
-To see CMake configuration details:
-```bash
-CMAKE_VERBOSE_MAKEFILE=ON pip install -e .
-```
-
-## Development
-
-### Setting up Development Environment
-```bash
-# Clone the repository
-git clone https://github.com/DMO-LAB/pysundial.git
-cd pysundial
-
-# Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+git clone https://github.com/yourusername/SundialsPy.git
+cd SundialsPy
 
 # Install dependencies
-pip install pybind11[global] numpy pytest
-
-# Install SUNDIALS (choose one method above)
-conda install -c conda-forge sundials
+conda install -c conda-forge sundials pybind11 cmake numpy
 
 # Install in development mode
 pip install -e .
-
-# Run tests
-pytest tests/
 ```
 
-### Building Documentation
-```bash
-pip install sphinx sphinx-rtd-theme
-cd docs
-make html
+## Docker Installation
+
+For a completely isolated environment:
+
+```dockerfile
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y \
+    libsundials-dev \
+    cmake \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install SundialsPy
+
+# Test the installation
+RUN python -c "import SundialsPy; print('SundialsPy installed successfully!')"
 ```
 
-## Requirements
+## Usage Example
 
-- Python 3.7+
-- NumPy 1.19.0+
-- SUNDIALS 6.0+
-- pybind11 2.6.0+
-- CMake 3.10+
+```python
+import numpy as np
+import SundialsPy
 
-## License
+# Define a simple ODE: dy/dt = -0.5*y
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+def rhs(t, y):
+    return np.array([-0.5 * y[0]])
+
+# Initial condition
+y0 = np.array([1.0])
+t0 = 0.0
+t_end = 2.0
+
+# Create a CVODE solver (BDF + Newton)
+solver = SundialsPy.cvode.CVodeSolver(
+    system_size=1,
+    rhs_fn=rhs,
+    iter_type=SundialsPy.cvode.IterationType.NEWTON,
+    linsol_type=SundialsPy.cvode.LinearSolverType.DENSE,
+    use_bdf=True
+)
+
+solver.initialize(y0, t0, 1e-6, np.array([1e-8]))
+result = solver.solve_to(0.1)
+print("Solution at t=0.1:", result)
+```
+
+## Available Integrators
+
+### CVODE
+- **BDF (Backward Differentiation Formula):** For stiff ODEs
+- **Adams:** For non-stiff ODEs
+- **Iteration Types:** Newton, Functional
+- **Linear Solvers:** Dense, Band, Sparse, Iterative (SPGMR, SPBCG, SPTFQMR, PCG)
+
+### ARKODE
+- **Explicit, Implicit, and IMEX Runge-Kutta methods**
+- **Butcher tables for various schemes**
+
+## Directory Structure
+- `SundialsPy/` — Python package
+- `src/` — C++ source code and pybind11 bindings
+- `examples/` — Example scripts
 
 ## Contributing
+Contributions are welcome! Please open issues or pull requests for bug reports, feature requests, or improvements.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Add tests for your changes
-5. Run the test suite (`pytest tests/`)
-6. Commit your changes (`git commit -m 'Add some amazing feature'`)
-7. Push to the branch (`git push origin feature/amazing-feature`)
-8. Open a Pull Request
+## License
+[MIT License](LICENSE)
 
-## Citation
-
-If you use PySundial in your research, please cite:
-
-```bibtex
-@software{pysundial,
-  title={PySundial: Python Bindings for SUNDIALS},
-  author={Eloghosa Ikponmwoba},
-  year={2023},
-  url={https://github.com/DMO-LAB/pysundial}
-}
-```
+## Acknowledgments
+- [SUNDIALS](https://computing.llnl.gov/projects/sundials) by LLNL
+- [pybind11](https://github.com/pybind/pybind11)
 
 ## Acknowledgments
 

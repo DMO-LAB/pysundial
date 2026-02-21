@@ -23,16 +23,29 @@ enum class ButcherTable {
     FEHLBERG_13_7_8,            // 8th order, 13 stages
     
     // Implicit methods
+    BACKWARD_EULER_1_1,         // 1st order, 1 stage
+    ARK2_DIRK_3_1_2, 
     SDIRK_2_1_2,                // 2nd order, 2 stages
+    IMPLICIT_MIDPOINT_1_2,    // 2nd order, 2 stages
+    IMPLICIT_TRAPEZOIDAL_2_2,    // 2nd order, 2 stages
     BILLINGTON_3_3_2,           // 2nd order, 3 stages
     TRBDF2_3_3_2,               // 2nd order, 3 stages
+    ESDIRK325L2SA_5_2_3,        // 2nd order, 5 stages
+    ESDIRK324L2SA_4_2_3,        // 2nd order, 4 stages
+    ESDIRK32I5L2SA_5_2_3,       // 2nd order, 5 stages
     KVAERNO_4_2_3,              // 3rd order, 4 stages
     ARK324L2SA_DIRK_4_2_3,      // 3rd order, 4 stages
+    ESDIRK436L2SA_6_3_4,        // 3rd order, 6 stages
     CASH_5_2_4,                 // 4th order, 5 stages
     CASH_5_3_4,                 // 4th order, 5 stages
     SDIRK_5_3_4,                // 4th order, 5 stages
+    KVAERNO_5_3_4,              // 4th order, 5 stages
     ARK436L2SA_DIRK_6_3_4,      // 4th order, 6 stages
     ARK437L2SA_DIRK_7_3_4,      // 4th order, 7 stages
+    ESDIRK43I6L2SA_6_3_4,       // 4th order, 6 stages
+    QESDIRK436L2SA_6_3_4,       // 4th order, 6 stages
+    ESDIRK437L2SA_7_3_4,        // 4th order, 7 stages
+    ESDIRK547L2SA2_7_4_5,       // 5th order, 7 stages
     KVAERNO_7_4_5,              // 5th order, 7 stages
     ARK548L2SA_DIRK_8_4_5,      // 5th order, 8 stages
     

@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cantera as ct
 import time
-import sundials_py
+import SundialsPy
 
 def compare_combustion_solvers_step_by_step():
     """
@@ -66,10 +66,10 @@ def compare_combustion_solvers_step_by_step():
     print("\nRunning CVODE BDF solver (step by step)...")
     try:
         # Create solver
-        cvode_solver = sundials_py.cvode.CVodeSolver(
+        cvode_solver = SundialsPy.cvode.CVodeSolver(
             system_size=system_size,
             rhs_fn=dydt,
-            iter_type=sundials_py.cvode.IterationType.NEWTON
+            iter_type=SundialsPy.cvode.IterationType.NEWTON
         )
         
         # Initialize solver
@@ -124,11 +124,11 @@ def compare_combustion_solvers_step_by_step():
     print("\nRunning ARKODE ERK solver (step by step)...")
     try:
         # Create solver
-        arkode_solver = sundials_py.arkode.ARKodeSolver(
+        arkode_solver = SundialsPy.arkode.ARKodeSolver(
             system_size=system_size,
             explicit_fn=dydt,
             implicit_fn=None,
-            butcher_table=sundials_py.arkode.ButcherTable.HEUN_EULER_2_1_2
+            butcher_table=SundialsPy.arkode.ButcherTable.HEUN_EULER_2_1_2
         )
         
         # Initialize solver

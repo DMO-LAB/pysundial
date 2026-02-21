@@ -37,4 +37,6 @@ Thumbs.db
 
 # Core dumps
 core
-results_*/
+results*/
+
+*.csv

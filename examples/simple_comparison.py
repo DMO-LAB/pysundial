@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cantera as ct
 import time
-import sundials_py
+import SundialsPy
 from typing import List, Dict, Any, Callable, Tuple, Optional
 import os
 
@@ -125,19 +125,19 @@ def create_solver(config: SolverConfig,
         Initialized solver
     """
     if config.solver_type == 'cvode':
-        solver = sundials_py.cvode.CVodeSolver(
+        solver = SundialsPy.cvode.CVodeSolver(
             system_size=config.system_size,
             rhs_fn=config.rhs_fn,
-            iter_type=config.args.get('iter_type', sundials_py.cvode.IterationType.NEWTON),
-            linsol_type=config.args.get('linsol_type', sundials_py.cvode.LinearSolverType.DENSE)
+            iter_type=config.args.get('iter_type', SundialsPy.cvode.IterationType.NEWTON),
+            linsol_type=config.args.get('linsol_type', SundialsPy.cvode.LinearSolverType.DENSE)
         )
     elif config.solver_type == 'arkode':
-        solver = sundials_py.arkode.ARKodeSolver(
+        solver = SundialsPy.arkode.ARKodeSolver(
             system_size=config.system_size,
             explicit_fn=config.rhs_fn,
             implicit_fn=config.args.get('implicit_fn', None),
-            butcher_table=config.args.get('butcher_table', sundials_py.arkode.ButcherTable.HEUN_EULER_2_1_2),
-            # linsol_type=config.args.get('linsol_type', sundials_py.arkode.LinearSolverType.DENSE)
+            butcher_table=config.args.get('butcher_table', SundialsPy.arkode.ButcherTable.HEUN_EULER_2_1_2),
+            # linsol_type=config.args.get('linsol_type', SundialsPy.arkode.LinearSolverType.DENSE)
         )
         #solver.set_max_num_steps(10000) 
         # solver.set_fixed_step_size(config.dt) 
@@ -448,7 +448,7 @@ def run_combustion_simulation(integration_method='solve_to'):
             rhs_fn=dydt,
             dt=dt,
             args={
-                'iter_type': sundials_py.cvode.IterationType.NEWTON
+                'iter_type': SundialsPy.cvode.IterationType.NEWTON
             },
             color='blue'
         ),
@@ -459,7 +459,7 @@ def run_combustion_simulation(integration_method='solve_to'):
             rhs_fn=dydt,
             dt=dt,
             args={
-                'butcher_table': sundials_py.arkode.ButcherTable.HEUN_EULER_2_1_2
+                'butcher_table': SundialsPy.arkode.ButcherTable.HEUN_EULER_2_1_2
             },
             color='red'
         ),
@@ -470,7 +470,7 @@ def run_combustion_simulation(integration_method='solve_to'):
             rhs_fn=dydt,
             dt=dt,
             args={
-                'butcher_table': sundials_py.arkode.ButcherTable.BOGACKI_SHAMPINE_4_2_3
+                'butcher_table': SundialsPy.arkode.ButcherTable.BOGACKI_SHAMPINE_4_2_3
             },
             color='green'
         ),
@@ -481,7 +481,7 @@ def run_combustion_simulation(integration_method='solve_to'):
             rhs_fn=dydt,
             dt=dt,
             args={
-                'butcher_table': sundials_py.arkode.ButcherTable.ZONNEVELD_5_3_4
+                'butcher_table': SundialsPy.arkode.ButcherTable.ZONNEVELD_5_3_4
             },
             color='purple'
         )

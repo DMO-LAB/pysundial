@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-import sundials_py
+import SundialsPy
 import sys
 
 def test_all_solvers():
@@ -49,10 +49,10 @@ def test_all_solvers():
         start_time = time.time()
         
         print("Creating solver...")
-        cvode_bdf = sundials_py.cvode.CVodeSolver(
+        cvode_bdf = SundialsPy.cvode.CVodeSolver(
             system_size=len(y0),
             rhs_fn=rhs_fn,
-            iter_type=sundials_py.cvode.IterationType.NEWTON
+            iter_type=SundialsPy.cvode.IterationType.NEWTON
         )
         
         print("Initializing solver...")
@@ -85,10 +85,10 @@ def test_all_solvers():
         start_time = time.time()
         
         print("Creating solver...")
-        cvode_adams = sundials_py.cvode.CVodeSolver(
+        cvode_adams = SundialsPy.cvode.CVodeSolver(
             system_size=len(y0),
             rhs_fn=rhs_fn,
-            iter_type=sundials_py.cvode.IterationType.FUNCTIONAL
+            iter_type=SundialsPy.cvode.IterationType.FUNCTIONAL
         )
 
         
@@ -122,10 +122,10 @@ def test_all_solvers():
         start_time = time.time()
         
         print("Creating solver...")
-        arkode_erk = sundials_py.arkode.ARKodeSolver(
+        arkode_erk = SundialsPy.arkode.ARKodeSolver(
             system_size=len(y0),
             explicit_fn=rhs_fn,
-            butcher_table=sundials_py.arkode.ButcherTable.BOGACKI_SHAMPINE_4_2_3
+            butcher_table=SundialsPy.arkode.ButcherTable.BOGACKI_SHAMPINE_4_2_3
         )
         
         
@@ -168,11 +168,11 @@ def test_all_solvers():
         
         print("Creating solver...")
         # Use a DIRK method (implicit only) to test the implicit solver
-        arkode_dirk = sundials_py.arkode.ARKodeSolver(
+        arkode_dirk = SundialsPy.arkode.ARKodeSolver(
             system_size=len(y0),
             explicit_fn=None,  # No explicit part
             implicit_fn=rhs_fn,  # All dynamics in implicit part
-            butcher_table=sundials_py.arkode.ButcherTable.SDIRK_5_3_4
+            butcher_table=SundialsPy.arkode.ButcherTable.SDIRK_5_3_4
         )
         
         print("Initializing solver...")
@@ -227,11 +227,11 @@ def test_all_solvers():
         
         print("Creating solver...")
         # Use an IMEX pair
-        arkode_imex = sundials_py.arkode.ARKodeSolver(
+        arkode_imex = SundialsPy.arkode.ARKodeSolver(
             system_size=len(y0),
             explicit_fn=explicit_part,
             implicit_fn=implicit_part,
-            butcher_table=sundials_py.arkode.ButcherTable.ARK436L2SA_ERK_6_3_4_DIRK_6_3_4
+            butcher_table=SundialsPy.arkode.ButcherTable.ARK436L2SA_ERK_6_3_4_DIRK_6_3_4
         )
         
         print("Initializing solver...")

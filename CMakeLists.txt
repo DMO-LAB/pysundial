@@ -93,8 +93,9 @@ if(NOT EXISTS "${SUNDIALS_INCLUDE_DIR}/sundials/sundials_config.h")
     )
 endif()
 
-# Find Python
-find_package(Python COMPONENTS Interpreter Development REQUIRED)
+# Find Python (Development.Module is sufficient for extension modules;
+# Development.Embed would require libpython.so which doesn't exist in manylinux)
+find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
 
 # Find pybind11 - try Python method first (more reliable)
 execute_process(

@@ -29,18 +29,12 @@ class CMakeBuild(build_ext):
         cfg = 'Debug' if self.debug else 'Release'
 
         python_include_dir = sysconfig.get_paths()['include']
-        python_library = os.path.join(
-            sysconfig.get_config_var('LIBDIR') or '',
-            'libpython' + sysconfig.get_python_version() + '.so'
-        )
 
         cmake_args = [
             f'-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}',
             f'-DCMAKE_BUILD_TYPE={cfg}',
-            f'-DPYTHON_EXECUTABLE={sys.executable}',
             f'-DPython_EXECUTABLE={sys.executable}',
-            f'-DPYTHON_INCLUDE_DIR={python_include_dir}',
-            f'-DPYTHON_LIBRARY={python_library}',
+            f'-DPython_INCLUDE_DIR={python_include_dir}',
         ]
 
         build_args = ['--config', cfg, '--', '-j4']

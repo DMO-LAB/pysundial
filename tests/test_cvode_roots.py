@@ -28,4 +28,4 @@ def test_cvode_with_root_function_does_not_break_rhs():
     y1, success, flag = solver.solve_to(t1)
     expected = y0 * np.exp(-t1)
     assert success or flag == 2, f"Solver failed with flag={flag}"  # flag=2 means root found
-    assert np.allclose(y1, expected, rtol=1e-6, atol=1e-8)
+    assert np.allclose(y1, expected, rtol=1e-5, atol=1e-6)

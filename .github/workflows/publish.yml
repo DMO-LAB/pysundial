@@ -63,7 +63,7 @@ jobs:
             ldconfig
           CIBW_BEFORE_ALL_MACOS: >
             brew install sundials cmake
-          CIBW_ENVIRONMENT: >
+          CIBW_ENVIRONMENT_LINUX: >
             SUNDIALS_ROOT=/usr/local
             SUNDIALS_INCLUDE_DIR=/usr/local/include
             SUNDIALS_LIBRARY_DIR=/usr/local/lib

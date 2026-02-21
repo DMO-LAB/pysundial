@@ -5,34 +5,75 @@ project(SundialsPy)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Platform-specific paths
-if(DEFINED ENV{CONDA_PREFIX})
-    # Conda environment (your current setup)
-    list(APPEND CMAKE_PREFIX_PATH "$ENV{CONDA_PREFIX}")
-    list(APPEND CMAKE_PREFIX_PATH "$ENV{CONDA_PREFIX}/Library")
-    set(SUNDIALS_ROOT "$ENV{CONDA_PREFIX}")
-    set(SUNDIALS_INCLUDE_DIR "$ENV{CONDA_PREFIX}/include")
-    set(SUNDIALS_LIBRARY_DIR "$ENV{CONDA_PREFIX}/lib")
-    message(STATUS "Using Conda environment")
-elseif(APPLE)
-    # macOS with Homebrew
-    list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew" "/usr/local")
-    set(SUNDIALS_ROOT "/opt/homebrew")
-    set(SUNDIALS_INCLUDE_DIR "/opt/homebrew/include")
-    set(SUNDIALS_LIBRARY_DIR "/opt/homebrew/lib")
-    message(STATUS "Using macOS Homebrew paths")
-elseif(WIN32)
-    # Windows
-    set(SUNDIALS_ROOT "C:/sundials")
-    set(SUNDIALS_INCLUDE_DIR "C:/sundials/include")
-    set(SUNDIALS_LIBRARY_DIR "C:/sundials/lib")
-    message(STATUS "Using Windows paths")
-else()
-    # Linux
-    set(SUNDIALS_ROOT "/usr/local")
-    set(SUNDIALS_INCLUDE_DIR "/usr/local/include")
-    set(SUNDIALS_LIBRARY_DIR "/usr/local/lib")
-    message(STATUS "Using Linux paths")
+# Allow explicit override via environment variables
+if(DEFINED ENV{SUNDIALS_INCLUDE_DIR})
+    set(SUNDIALS_INCLUDE_DIR "$ENV{SUNDIALS_INCLUDE_DIR}")
+endif()
+if(DEFINED ENV{SUNDIALS_LIBRARY_DIR})
+    set(SUNDIALS_LIBRARY_DIR "$ENV{SUNDIALS_LIBRARY_DIR}")
+endif()
+if(DEFINED ENV{SUNDIALS_ROOT})
+    set(SUNDIALS_ROOT "$ENV{SUNDIALS_ROOT}")
+    if(NOT SUNDIALS_INCLUDE_DIR)
+        set(SUNDIALS_INCLUDE_DIR "${SUNDIALS_ROOT}/include")
+    endif()
+    if(NOT SUNDIALS_LIBRARY_DIR)
+        set(SUNDIALS_LIBRARY_DIR "${SUNDIALS_ROOT}/lib")
+    endif()
+endif()
+
+# Auto-detect if not already set
+if(NOT SUNDIALS_INCLUDE_DIR)
+    if(DEFINED ENV{CONDA_PREFIX})
+        list(APPEND CMAKE_PREFIX_PATH "$ENV{CONDA_PREFIX}")
+        list(APPEND CMAKE_PREFIX_PATH "$ENV{CONDA_PREFIX}/Library")
+        set(SUNDIALS_ROOT "$ENV{CONDA_PREFIX}")
+        set(SUNDIALS_INCLUDE_DIR "$ENV{CONDA_PREFIX}/include")
+        set(SUNDIALS_LIBRARY_DIR "$ENV{CONDA_PREFIX}/lib")
+        message(STATUS "Using Conda environment")
+    elseif(APPLE)
+        list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew" "/usr/local")
+        if(EXISTS "/opt/homebrew/include/sundials/sundials_config.h")
+            set(SUNDIALS_ROOT "/opt/homebrew")
+            set(SUNDIALS_INCLUDE_DIR "/opt/homebrew/include")
+            set(SUNDIALS_LIBRARY_DIR "/opt/homebrew/lib")
+            message(STATUS "Using macOS Homebrew (arm64) paths")
+        else()
+            set(SUNDIALS_ROOT "/usr/local")
+            set(SUNDIALS_INCLUDE_DIR "/usr/local/include")
+            set(SUNDIALS_LIBRARY_DIR "/usr/local/lib")
+            message(STATUS "Using macOS /usr/local paths")
+        endif()
+    elseif(WIN32)
+        set(SUNDIALS_ROOT "C:/sundials")
+        set(SUNDIALS_INCLUDE_DIR "C:/sundials/include")
+        set(SUNDIALS_LIBRARY_DIR "C:/sundials/lib")
+        message(STATUS "Using Windows paths")
+    else()
+        # Linux: probe multiple standard locations
+        set(_SUNDIALS_FOUND FALSE)
+        foreach(_prefix "/usr" "/usr/local")
+            if(EXISTS "${_prefix}/include/sundials/sundials_config.h")
+                set(SUNDIALS_ROOT "${_prefix}")
+                set(SUNDIALS_INCLUDE_DIR "${_prefix}/include")
+                # Debian/Ubuntu puts libs under a multiarch directory
+                if(EXISTS "${_prefix}/lib/${CMAKE_LIBRARY_ARCHITECTURE}")
+                    set(SUNDIALS_LIBRARY_DIR "${_prefix}/lib/${CMAKE_LIBRARY_ARCHITECTURE}")
+                else()
+                    set(SUNDIALS_LIBRARY_DIR "${_prefix}/lib")
+                endif()
+                set(_SUNDIALS_FOUND TRUE)
+                message(STATUS "Found SUNDIALS at ${_prefix}")
+                break()
+            endif()
+        endforeach()
+        if(NOT _SUNDIALS_FOUND)
+            set(SUNDIALS_ROOT "/usr/local")
+            set(SUNDIALS_INCLUDE_DIR "/usr/local/include")
+            set(SUNDIALS_LIBRARY_DIR "/usr/local/lib")
+            message(STATUS "Using Linux default paths (SUNDIALS not yet detected)")
+        endif()
+    endif()
 endif()
 
 # Print debugging information
@@ -83,29 +124,29 @@ if(WIN32)
     find_library(SUNDIALS_SUNLINSOLDENSE_LIB NAMES sundials_sunlinsoldense libsundials_sunlinsoldense PATHS "${SUNDIALS_LIBRARY_DIR}")
     find_library(SUNDIALS_SUNNONLINSOL_LIB NAMES sundials_sunnonlinsol libsundials_sunnonlinsol PATHS "${SUNDIALS_LIBRARY_DIR}")
 else()
-    # Unix library names (your current working setup)
+    # Unix library names
     find_library(SUNDIALS_CVODE_LIB 
-        NAMES sundials_cvode libsundials_cvode
+        NAMES sundials_cvode
         PATHS "${SUNDIALS_LIBRARY_DIR}"
         NO_DEFAULT_PATH)
     find_library(SUNDIALS_NVEC_LIB 
-        NAMES sundials_nvecserial libsundials_nvecserial
+        NAMES sundials_nvecserial
         PATHS "${SUNDIALS_LIBRARY_DIR}"
         NO_DEFAULT_PATH)
     find_library(SUNDIALS_ARKODE_LIB 
-        NAMES sundials_arkode libsundials_arkode
+        NAMES sundials_arkode
         PATHS "${SUNDIALS_LIBRARY_DIR}"
         NO_DEFAULT_PATH)
     find_library(SUNDIALS_SUNMATRIXDENSE_LIB 
-        NAMES sundials_sunmatrixdense libsundials_sunmatrixdense
+        NAMES sundials_sunmatrixdense
         PATHS "${SUNDIALS_LIBRARY_DIR}"
         NO_DEFAULT_PATH)
     find_library(SUNDIALS_SUNLINSOLDENSE_LIB 
-        NAMES sundials_sunlinsoldense libsundials_sunlinsoldense
+        NAMES sundials_sunlinsoldense
         PATHS "${SUNDIALS_LIBRARY_DIR}"
         NO_DEFAULT_PATH)
     find_library(SUNDIALS_SUNNONLINSOL_LIB
-        NAMES sundials_sunnonlinsol libsundials_sunnonlinsol
+        NAMES sundials_sunnonlinsol
         PATHS "${SUNDIALS_LIBRARY_DIR}"
         NO_DEFAULT_PATH)
 endif()

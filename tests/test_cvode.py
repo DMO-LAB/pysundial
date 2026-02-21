@@ -27,5 +27,6 @@ def test_cvode_integrators(use_bdf, iter_type, linsol_type):
         kwargs['linsol_type'] = linsol_type
     solver = SundialsPy.cvode.CVodeSolver(**kwargs)
     solver.initialize(y0, t0, 1e-6, np.array([1e-8]))
-    result = solver.solve_to(t1)
-    assert np.allclose(result, expected, atol=1e-6), f"Failed for use_bdf={use_bdf}, iter_type={iter_type}" 
+    result, success, flag = solver.solve_to(t1)
+    assert success, f"Solver failed with flag={flag} for use_bdf={use_bdf}, iter_type={iter_type}"
+    assert np.allclose(result, expected, atol=1e-6), f"Failed for use_bdf={use_bdf}, iter_type={iter_type}"

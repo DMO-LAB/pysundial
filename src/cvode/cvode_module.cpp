@@ -33,6 +33,7 @@ private:
     
     // Solver type
     bool using_newton_iteration_;
+    bool using_bdf_;
     
     // Unified callback/user data container (single pointer passed to CVODE)
     CvodeUserData* user_data_;
@@ -77,6 +78,7 @@ CVodeSolver(int system_size,
     : N_(system_size), 
     t0_(0.0), 
     using_newton_iteration_(iter_type == IterationType::NEWTON),
+    using_bdf_(use_bdf),
     user_data_(nullptr),
     A_(nullptr),
     LS_(nullptr),
@@ -283,9 +285,11 @@ CVodeSolver(int system_size,
     flag = CVodeSetInitStep(cvode_mem_, 1.0e-12);  // Very small initial step
     check_flag(&flag, "CVodeSetInitStep", 1);
     
-    // Set stability limit detection (can help with stiff problems)
-    flag = CVodeSetStabLimDet(cvode_mem_, SUNTRUE);
-    check_flag(&flag, "CVodeSetStabLimDet", 1);
+    // Stability limit detection only valid for BDF (illegal for Adams in SUNDIALS v7+)
+    if (using_bdf_) {
+        flag = CVodeSetStabLimDet(cvode_mem_, SUNTRUE);
+        check_flag(&flag, "CVodeSetStabLimDet", 1);
+    }
     
     // For Newton iteration, set additional parameters
     if (using_newton_iteration_) {
@@ -386,21 +390,16 @@ CVodeSolver(int system_size,
         int flag = CVode(cvode_mem_, tout, y_, &t, CV_NORMAL);
         verbose_print(2, "solve_to() after CVode call. flag=" + std::to_string(flag));
         
-        bool success = (flag == 0);
+        // flag >= 0 means success (0=CV_SUCCESS, 1=CV_TSTOP_RETURN, 2=CV_ROOT_RETURN)
+        bool success = (flag >= 0);
         
         if (flag < 0) {
-            // Only print error if verbose level is high enough
             if (verbose_level_ >= 1) {
                 verbose_error("CVODE solver error code: " + std::to_string(flag));
             }
-            // Don't throw exception for negative error codes
-        } else if (flag > 0) {
-            verbose_error("CVODE solver error code: " + std::to_string(flag));
-            throw std::runtime_error("CVODE solver error: " + std::to_string(flag));
-        }
-        
-        if (success) {
-            verbose_print(2, "Integration completed successfully to t=" + std::to_string(t));
+        } else {
+            verbose_print(2, "Integration completed successfully to t=" + std::to_string(t) +
+                          " (flag=" + std::to_string(flag) + ")");
         }
         
         // Convert result to numpy array

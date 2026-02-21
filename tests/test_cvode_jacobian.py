@@ -32,5 +32,6 @@ def test_cvode_with_user_jacobian_linear_system():
     solver.set_jacobian(jac)
     solver.initialize(y0, t0, 1e-8, np.array([1e-10, 1e-10], dtype=np.float64))
 
-    y1 = solver.solve_to(t1)
+    y1, success, flag = solver.solve_to(t1)
+    assert success, f"Solver failed with flag={flag}"
     assert np.allclose(y1, expected, rtol=1e-6, atol=1e-8)

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
     branches: [main]
 
@@ -14,16 +14,22 @@ jobs:
         python-version: ['3.9', '3.10', '3.11', '3.12']
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install SUNDIALS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsundials-dev
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build pytest numpy
+          pip install build pytest numpy pybind11[global]
           pip install .
-      - name: Build package
-        run: python -m build
+
       - name: Run tests
-        run: pytest tests/ 
+        run: pytest tests/

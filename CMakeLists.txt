@@ -42,7 +42,14 @@ message(STATUS "SUNDIALS LIBRARY DIR: ${SUNDIALS_LIBRARY_DIR}")
 
 # Check if SUNDIALS headers exist
 if(NOT EXISTS "${SUNDIALS_INCLUDE_DIR}/sundials/sundials_config.h")
-    provide_installation_help()
+    message(FATAL_ERROR
+        "SUNDIALS headers not found at ${SUNDIALS_INCLUDE_DIR}/sundials/sundials_config.h\n"
+        "Please install SUNDIALS:\n"
+        "  Conda:  conda install -c conda-forge sundials\n"
+        "  macOS:  brew install sundials\n"
+        "  Ubuntu: sudo apt-get install libsundials-dev\n"
+        "Or set SUNDIALS_ROOT, SUNDIALS_INCLUDE_DIR, SUNDIALS_LIBRARY_DIR manually."
+    )
 endif()
 
 # Find Python
@@ -146,7 +153,7 @@ pybind11_add_module(_SundialsPy ${SOURCES})
 target_link_libraries(_SundialsPy PRIVATE ${SUNDIALS_LIBRARIES})
 
 # Ensure proper RPATH for finding shared libraries
-set_target_properties(_sundials_py PROPERTIES
+set_target_properties(_SundialsPy PROPERTIES
     INSTALL_RPATH_USE_LINK_PATH TRUE
     BUILD_WITH_INSTALL_RPATH TRUE
 )

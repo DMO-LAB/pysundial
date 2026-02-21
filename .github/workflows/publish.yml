@@ -53,9 +53,9 @@ jobs:
             yum install -y epel-release &&
             yum install -y cmake3 gcc gcc-c++ make wget tar &&
             ln -sf /usr/bin/cmake3 /usr/bin/cmake || true &&
-            wget https://github.com/LLNL/sundials/releases/download/v6.6.2/sundials-6.6.2.tar.gz &&
-            tar -xzf sundials-6.6.2.tar.gz &&
-            cd sundials-6.6.2 &&
+            wget https://github.com/LLNL/sundials/releases/download/v7.3.0/sundials-7.3.0.tar.gz &&
+            tar -xzf sundials-7.3.0.tar.gz &&
+            cd sundials-7.3.0 &&
             mkdir build && cd build &&
             cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_SHARED_LIBS=ON &&
             make -j$(nproc) &&

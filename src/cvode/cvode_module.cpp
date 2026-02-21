@@ -48,6 +48,22 @@ private:
     SUNNonlinearSolver NLS_;
 
     int mxsteps_;
+    
+    // Verbose level: -1 (no output), 0 (errors/exceptions), 2 (debug info)
+    int verbose_level_;
+    
+    // Helper methods for verbose output
+    void verbose_print(int level, const std::string& message) const {
+        if (verbose_level_ >= level) {
+            std::cout << "[CVODE] " << message << std::endl;
+        }
+    }
+    
+    void verbose_error(const std::string& message) const {
+        if (verbose_level_ >= 0) {
+            std::cerr << "[CVODE ERROR] " << message << std::endl;
+        }
+    }
 
 public:
     // Constructor
@@ -56,7 +72,8 @@ CVodeSolver(int system_size,
         IterationType iter_type = IterationType::NEWTON,
         LinearSolverType linsol_type = LinearSolverType::DENSE,
         bool use_bdf = true,
-        int mxsteps = 1000)  // Add parameter to choose BDF vs Adams
+        int mxsteps = 1000,
+        int verbose = -1)  // Add verbose parameter
     : N_(system_size), 
     t0_(0.0), 
     using_newton_iteration_(iter_type == IterationType::NEWTON),
@@ -66,8 +83,11 @@ CVodeSolver(int system_size,
     y_(nullptr),
     y_owner_(false),
     NLS_(nullptr),
-    mxsteps_(mxsteps) {
-    // std::cout << "[DEBUG] CVodeSolver constructor start. system_size=" << system_size << ", iter_type=" << (using_newton_iteration_ ? "NEWTON" : "FUNCTIONAL") << ", use_bdf=" << use_bdf << std::endl;
+    mxsteps_(mxsteps),
+    verbose_level_(verbose) {
+    verbose_print(2, "CVodeSolver constructor start. system_size=" + std::to_string(system_size) + 
+                  ", iter_type=" + (using_newton_iteration_ ? "NEWTON" : "FUNCTIONAL") + 
+                  ", use_bdf=" + (use_bdf ? "true" : "false"));
 
     // Ensure context is initialized
     if (sunctx == nullptr) {
@@ -153,13 +173,13 @@ CVodeSolver(int system_size,
     }
 
     N_VDestroy_Serial(y0_dummy);  // cleanup dummy vector
-    //std::cout << "[DEBUG] CVodeSolver constructor end." << std::endl;
+    verbose_print(2, "CVodeSolver constructor completed successfully");
     }
 
     
     // Destructor
     ~CVodeSolver() {
-        // std::cout << "[DEBUG] CVodeSolver destructor start." << std::endl;
+        verbose_print(2, "CVodeSolver destructor start");
         // Free memory in reverse order of allocation
         if (y_owner_ && y_ != nullptr) {
             N_VDestroy_Serial(y_);
@@ -182,80 +202,16 @@ CVodeSolver(int system_size,
         }
         
     delete user_data_;
-        // std::cout << "[DEBUG] CVodeSolver destructor end." << std::endl;
+        verbose_print(2, "CVodeSolver destructor completed");
     }
     
-    // Initialize the solver with initial conditions
-    // void initialize(py::array_t<realtype> y0, double t0 = 0.0, 
-    //            double rel_tol = 1.0e-6, py::array_t<realtype> abs_tol = py::array_t<realtype>()) {
-    //     // std::cout << "[DEBUG] initialize() start." << std::endl;
-    //     // Set initial time
-    //     t0_ = t0;
-        
-    //     try {
-    //         // Create and fill N_Vector for initial conditions
-    //         N_Vector y_tmp = numpy_to_nvector(y0);
-            
-    //         // Check vector length
-    //         if (N_VGetLength_Serial(y_tmp) != N_) {
-    //             N_VDestroy_Serial(y_tmp);
-    //             throw std::runtime_error("Initial condition vector length doesn't match system size");
-    //         }
-            
-    //         // Clone the vector to keep a copy
-    //         if (y_ != nullptr && y_owner_) {
-    //             N_VDestroy_Serial(y_);
-    //         }
-            
-    //         y_ = N_VClone(y_tmp);
-    //         if (y_ == nullptr) {
-    //             N_VDestroy_Serial(y_tmp);
-    //             throw std::runtime_error("Failed to clone y vector");
-    //         }
-            
-    //         // Copy data from temporary vector to y_
-    //         realtype* dest = N_VGetArrayPointer_Serial(y_);
-    //         realtype* src = N_VGetArrayPointer_Serial(y_tmp);
-            
-    //         for (int i = 0; i < N_; ++i) {
-    //             dest[i] = src[i];
-    //         }
-            
-    //         N_VDestroy_Serial(y_tmp);  // Clean up temporary
-    //         y_owner_ = true;
-            
-    //         int flag;
-            
-    //         // Reinitialize the solver
-    //         flag = CVodeReInit(cvode_mem_, t0_, y_);
-    //         check_flag(&flag, "CVodeReInit", 1);
-            
-    //         // Set tolerances
-    //         if (abs_tol.size() > 0) {
-    //             // Vector absolute tolerance
-    //             N_Vector atol_vec = numpy_to_nvector(abs_tol);
-    //             flag = CVodeSVtolerances(cvode_mem_, rel_tol, atol_vec);
-    //             check_flag(&flag, "CVodeSVtolerances", 1);
-    //             N_VDestroy_Serial(atol_vec);
-    //         } else {
-    //             // Scalar absolute tolerance
-    //             flag = CVodeSStolerances(cvode_mem_, rel_tol, rel_tol * 1.0e-3);
-    //             check_flag(&flag, "CVodeSStolerances", 1);
-    //         }
-            
-    //         // Make sure user data is properly set
-    //         flag = CVodeSetUserData(cvode_mem_, user_data_);
-    //         check_flag(&flag, "CVodeSetUserData in initialize", 1);
-            
-    //     } catch (const std::exception& e) {
-    //         throw std::runtime_error(std::string("Error initializing solver: ") + e.what());
-    //     }
-    //     // std::cout << "[DEBUG] initialize() end." << std::endl;
-    // }
     // Initialize the solver with initial conditions
     void initialize(py::array_t<realtype> y0, double t0 = 0.0, 
         double rel_tol = 1.0e-6, py::array_t<realtype> abs_tol = py::array_t<realtype>()) {
 
+    verbose_print(2, "Initializing solver with t0=" + std::to_string(t0) + 
+                  ", rel_tol=" + std::to_string(rel_tol));
+    
     // Set initial time
     t0_ = t0;
 
@@ -414,35 +370,54 @@ CVodeSolver(int system_size,
         check_flag(&flag, "CVodeRootInit", 1);
     }
     
-    // Solve to a specific time point
-    py::array_t<realtype> solve_to(double tout) {
-        // std::cout << "[DEBUG] solve_to() start. tout=" << tout << std::endl;
+    // Solve to a specific time point - returns tuple (result, success_flag, error_code)
+    py::tuple solve_to(double tout) {
+        verbose_print(2, "solve_to() start. tout=" + std::to_string(tout));
         if (y_ == nullptr) {
+            verbose_error("Solver not initialized with initial conditions");
             throw std::runtime_error("Solver not initialized with initial conditions");
         }
         
-        // std::cout << "Starting solve_to with t0=" << t0_ << ", tout=" << tout 
-        //         << ", method=" << (using_newton_iteration_ ? "BDF/Newton" : "ADAMS/Functional") << std::endl;
+        verbose_print(2, "Starting solve_to with t0=" + std::to_string(t0_) + 
+                      ", tout=" + std::to_string(tout) + 
+                      ", method=" + (using_newton_iteration_ ? "BDF/Newton" : "ADAMS/Functional"));
         
         realtype t = t0_;
         int flag = CVode(cvode_mem_, tout, y_, &t, CV_NORMAL);
-        // std::cout << "[DEBUG] solve_to() after CVode call. flag=" << flag << std::endl;
+        verbose_print(2, "solve_to() after CVode call. flag=" + std::to_string(flag));
+        
+        bool success = (flag == 0);
         
         if (flag < 0) {
-            std::cerr << "CVODE solver error code: " << flag << std::endl;
+            // Only print error if verbose level is high enough
+            if (verbose_level_ >= 1) {
+                verbose_error("CVODE solver error code: " + std::to_string(flag));
+            }
+            // Don't throw exception for negative error codes
+        } else if (flag > 0) {
+            verbose_error("CVODE solver error code: " + std::to_string(flag));
             throw std::runtime_error("CVODE solver error: " + std::to_string(flag));
         }
         
-        // std::cout << "Integration completed successfully to t=" << t << std::endl;
+        if (success) {
+            verbose_print(2, "Integration completed successfully to t=" + std::to_string(t));
+        }
         
         // Convert result to numpy array
-        // std::cout << "[DEBUG] solve_to() end." << std::endl;
-        return nvector_to_numpy(y_);
+        verbose_print(2, "solve_to() end");
+        return py::make_tuple(nvector_to_numpy(y_), success, flag);
+    }
+    
+    // Legacy method for backward compatibility - returns only result
+    py::array_t<realtype> solve_to_legacy(double tout) {
+        py::tuple result = solve_to(tout);
+        return result[0].cast<py::array_t<realtype>>();
     }
     
     // Solve for multiple time points
     py::array_t<realtype> solve(py::array_t<realtype> time_points) {
         if (y_ == nullptr) {
+            verbose_error("Solver not initialized with initial conditions");
             throw std::runtime_error("Solver not initialized with initial conditions");
         }
         
@@ -466,9 +441,16 @@ CVodeSolver(int system_size,
             int flag = CVode(cvode_mem_, tout, y_, &t, CV_NORMAL);
             
             if (flag < 0) {
+                verbose_error("CVODE solver error at step " + std::to_string(i) + 
+                             ": " + std::to_string(flag));
+                // Don't throw exception for negative error codes, just print error
+            } else if (flag > 0) {
+                verbose_error("CVODE solver error at step " + std::to_string(i) + 
+                             ": " + std::to_string(flag));
                 throw std::runtime_error("CVODE solver error at step " + std::to_string(i) + 
                                         ": " + std::to_string(flag));
             }
+            // flag == 0 means success, no action needed
             
             // Copy current solution to results array
             realtype* y_data = N_VGetArrayPointer_Serial(y_);
@@ -551,13 +533,14 @@ void init_cvode_module(py::module_ &m) {
     
     // Register CVodeSolver class with updated constructor
     py::class_<CVodeSolver>(m, "CVodeSolver")
-        .def(py::init<int, PyRhsFn, IterationType, LinearSolverType, bool, int>(),
+        .def(py::init<int, PyRhsFn, IterationType, LinearSolverType, bool, int, int>(),
              py::arg("system_size"),
              py::arg("rhs_fn"),
              py::arg("iter_type") = IterationType::NEWTON,
              py::arg("linsol_type") = LinearSolverType::DENSE,
              py::arg("use_bdf") = true,  // Add this parameter
              py::arg("mxsteps") = 1000,
+             py::arg("verbose") = -1,  // Add verbose parameter
              "Create a CVODE solver for an ODE system")
         .def("initialize", &CVodeSolver::initialize,
              py::arg("y0"),
@@ -578,8 +561,11 @@ void init_cvode_module(py::module_ &m) {
              "Set the root finding function")
         .def("solve_to", &CVodeSolver::solve_to,
              py::arg("tout"),
-             "Solve the ODE system to a specific time point")
-        .def("solve_single", &CVodeSolver::solve_to)
+             "Solve the ODE system to a specific time point. Returns (result, success, error_code)")
+        .def("solve_to_legacy", &CVodeSolver::solve_to_legacy,
+             py::arg("tout"),
+             "Legacy solve_to method that returns only the result")
+        .def("solve_single", &CVodeSolver::solve_to_legacy)
         .def("solve", &CVodeSolver::solve,
              py::arg("time_points"),
              "Solve the ODE system for multiple time points")

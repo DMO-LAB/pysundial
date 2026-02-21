@@ -40,6 +40,11 @@ message(STATUS "SUNDIALS ROOT: ${SUNDIALS_ROOT}")
 message(STATUS "SUNDIALS INCLUDE DIR: ${SUNDIALS_INCLUDE_DIR}")
 message(STATUS "SUNDIALS LIBRARY DIR: ${SUNDIALS_LIBRARY_DIR}")
 
+# Check if SUNDIALS headers exist
+if(NOT EXISTS "${SUNDIALS_INCLUDE_DIR}/sundials/sundials_config.h")
+    provide_installation_help()
+endif()
+
 # Find Python
 find_package(Python COMPONENTS Interpreter Development REQUIRED)
 
@@ -139,6 +144,12 @@ pybind11_add_module(_SundialsPy ${SOURCES})
 
 # Link against SUNDIALS libraries
 target_link_libraries(_SundialsPy PRIVATE ${SUNDIALS_LIBRARIES})
+
+# Ensure proper RPATH for finding shared libraries
+set_target_properties(_sundials_py PROPERTIES
+    INSTALL_RPATH_USE_LINK_PATH TRUE
+    BUILD_WITH_INSTALL_RPATH TRUE
+)
 
 # Install the module
 install(TARGETS _SundialsPy DESTINATION SundialsPy)

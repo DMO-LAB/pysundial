@@ -209,4 +209,8 @@ Contributions are welcome! Please open issues or pull requests for bug reports, 
 - [SUNDIALS](https://computing.llnl.gov/projects/sundials) by LLNL
 - [pybind11](https://github.com/pybind/pybind11)
 
+## Acknowledgments
 
+- [SUNDIALS](https://sundials.readthedocs.io/) - Suite of Nonlinear and Differential/Algebraic equation Solvers
+- [pybind11](https://pybind11.readthedocs.io/) - Seamless operability between C++11 and Python
+- [NumPy](https://numpy.org/) - Fundamental package for scientific computing with Python
